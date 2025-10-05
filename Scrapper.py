@@ -1,8 +1,10 @@
 
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
+import csv
 
 def fetch_property_html(url):
     # Set up Selenium Chrome options
@@ -117,7 +119,19 @@ def parse_properties(html):
     return properties
 
 if __name__ == "__main__":
-    url = "https://www.zoopla.co.uk/for-sale/property/london/grove-avenue-n10/n10-2as/?q=n10%202as&radius=0.25&search_source=for-sale"
+    url = "https://www.zoopla.co.uk/for-sale/details/69607310/?search_identifier=a11e4602fdf1c0e865ef052e85635098b6810e25e0187a09d72eff9f95eee100&weekly_featured=1&utm_content=featured_listing"
     html = fetch_property_html(url)
     properties = parse_properties(html)
     print(properties)
+
+    # Write to CSV
+    if properties:
+        keys = set()
+        for prop in properties:
+            keys.update(prop.keys())
+        keys = list(keys)
+        with open("properties.csv", "w", newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=keys)
+            writer.writeheader()
+            writer.writerows(properties)
+        print(f"[INFO] Saved {len(properties)} properties to properties.csv")
