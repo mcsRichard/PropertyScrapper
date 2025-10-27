@@ -1,0 +1,64 @@
+<!--pages/index/index.wxml-->
+<view class="container">
+  <!-- 搜索栏 -->
+  <view class="search-bar">
+    <input class="search-input" placeholder="搜索房产..." bindinput="onSearchInput" value="{{searchKeyword}}" />
+    <button class="search-btn" bindtap="onSearch">搜索</button>
+  </view>
+
+  <!-- 筛选栏 -->
+  <view class="filter-bar">
+    <button class="filter-btn" bindtap="toggleFilter">筛选</button>
+    <picker mode="selector" range="{{bedroomOptions}}" range-key="label" bindchange="onBedroomChange">
+      <view class="filter-item">
+        <text>{{currentBedroom || '卧室'}}</text>
+      </view>
+    </picker>
+    
+    <picker mode="selector" range="{{typeOptions}}" range-key="label" bindchange="onTypeChange">
+      <view class="filter-item">
+        <text>{{currentType || '类型'}}</text>
+      </view>
+    </picker>
+    
+    <button class="clear-btn" bindtap="clearFilter" wx:if="{{filters.minPrice || filters.maxPrice || filters.propertyType || filters.bedrooms}}">清除</button>
+  </view>
+
+  <!-- 筛选面板 -->
+  <view class="filter-panel" wx:if="{{showFilter}}">
+    <view class="filter-title">价格范围</view>
+    <view class="price-filter">
+      <slider min="0" max="2000000" value="{{priceRange[0]}}" show-value bindchange="onPriceStartChange" />
+      <slider min="0" max="2000000" value="{{priceRange[1]}}" show-value bindchange="onPriceEndChange" />
+      <view class="price-display">
+        £{{priceRange[0].toLocaleString()}} - £{{priceRange[1].toLocaleString()}}
+      </view>
+    </view>
+    
+    <view class="filter-actions">
+      <button class="btn-primary" bindtap="applyFilter">应用筛选</button>
+      <button class="btn-secondary" bindtap="clearFilter">清除</button>
+    </view>
+  </view>
+
+  <!-- 房产列表 -->
+  <scroll-view class="property-list" scroll-y="{{true}}" bindscrolltolower="onReachBottom">
+    <view wx:for="{{properties}}" wx:key="id" class="property-item" bindtap="navigateToDetail" data-id="{{item.id}}">
+      <image class="property-image" src="{{item.image_url || '/image/default_property.png'}}" mode="aspectFill" />
+      <view class="property-info">
+        <view class="property-title">{{item.title}}</view>
+        <view class="property-price">{{item.price}}</view>
+        <view class="property-meta">
+          <text wx:if="{{item.bedrooms}}">{{item.bedrooms}}室</text>
+          <text wx:if="{{item.property_type}}">{{item.property_type}}</text>
+        </view>
+        <view class="property-desc">{{item.description_chinese || item.description}}</view>
+      </view>
+    </view>
+
+    <!-- 加载状态 -->
+    <view wx:if="{{loading}}" class="loading">加载中...</view>
+    <view wx:if="{{!hasMore && properties.length > 0}}" class="no-more">没有更多了</view>
+    <view wx:if="{{properties.length === 0 && !loading}}" class="empty">暂无房产数据</view>
+  </scroll-view>
+</view>

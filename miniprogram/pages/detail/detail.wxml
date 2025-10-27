@@ -1,0 +1,51 @@
+<!--pages/detail/detail.wxml-->
+<view class="container">
+  <view wx:if="{{loading}}" class="loading">加载中...</view>
+  
+  <view wx:if="{{!loading && property}}" class="property-detail">
+    <!-- 图片 -->
+    <image class="detail-image" src="{{property.image_url || '/image/default_property.png'}}" mode="widthFix" />
+    
+    <!-- 基本信息 -->
+    <view class="detail-section">
+      <view class="detail-title">{{property.title}}</view>
+      <view class="detail-price">{{property.price}}</view>
+      
+      <view class="detail-meta">
+        <view wx:if="{{property.bedrooms}}" class="meta-item">
+          <text class="meta-label">卧室</text>
+          <text class="meta-value">{{property.bedrooms}}室</text>
+        </view>
+        <view wx:if="{{property.property_type}}" class="meta-item">
+          <text class="meta-label">类型</text>
+          <text class="meta-value">{{property.property_type}}</text>
+        </view>
+        <view wx:if="{{property.area}}" class="meta-item">
+          <text class="meta-label">面积</text>
+          <text class="meta-value">{{property.area}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 详细信息 -->
+    <view class="detail-section">
+      <view class="section-title">房产描述</view>
+      <view class="description-text">{{property.description_chinese}}</view>
+    </view>
+
+    <!-- 详细信息(英文) -->
+    <view class="detail-section">
+      <view class="section-title">Property Description</view>
+      <view class="description-text">{{property.description}}</view>
+    </view>
+
+    <!-- 操作按钮 -->
+    <view class="action-buttons">
+      <button class="btn-primary" bindtap="viewOriginalLink">查看原网页</button>
+    </view>
+  </view>
+  
+  <view wx:if="{{!loading && !property}}" class="empty">
+    加载失败，请重试
+  </view>
+</view>

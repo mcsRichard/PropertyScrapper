@@ -5,23 +5,87 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 import csv
+import requests
+import json
+import time
+import random
+from datetime import datetime
 
-def fetch_property_html(url):
-    # Set up Selenium Chrome options
-    chrome_options = Options()
-    chrome_options.add_argument('--headless')  # Run in headless mode
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('window-size=1920x1080')
-    chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+def translate_to_chinese(text):
+    """Translate English text to Chinese using Google Translate API"""
+    if not text or not text.strip():
+        return ""
+    
+    try:
+        # Using Google Translate API (free tier)
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            'client': 'gtx',
+            'sl': 'en',  # source language (English)
+            'tl': 'zh',  # target language (Chinese)
+            'dt': 't',
+            'q': text
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        result = response.json()
+        if result and len(result) > 0 and len(result[0]) > 0:
+            translated_text = ''.join([item[0] for item in result[0] if item[0]])
+            return translated_text.strip()
+        else:
+            return text  # Return original if translation fails
+            
+    except Exception as e:
+        print(f"[WARNING] Translation failed for text: {text[:50]}... Error: {e}")
+        return text  # Return original text if translation fails
 
-    # Update the path to your chromedriver.exe if needed
-    service = Service('C:/Projects/Scrapper/chromedriver.exe')
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    driver.get(url)
-    html = driver.page_source
-    driver.quit()
-    return html
+def fetch_property_html(url, max_retries=3):
+    """Fetch property HTML with retry mechanism and error handling"""
+    for attempt in range(max_retries):
+        try:
+            print(f"[INFO] Fetching URL (attempt {attempt + 1}/{max_retries}): {url}")
+            
+            # Set up Selenium Chrome options
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')  # Run in headless mode
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('window-size=1920x1080')
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            
+            # Random user agent to avoid detection
+            user_agents = [
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            ]
+            chrome_options.add_argument(f'user-agent={random.choice(user_agents)}')
+
+            service = Service('./chromedriver.exe')
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            driver.get(url)
+            time.sleep(random.uniform(2, 5))  # Random delay to avoid detection
+            html = driver.page_source
+            driver.quit()
+            
+            print(f"[SUCCESS] Successfully fetched HTML ({len(html)} characters)")
+            return html
+            
+        except Exception as e:
+            print(f"[ERROR] Attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                wait_time = random.uniform(5, 10)
+                print(f"[INFO] Waiting {wait_time:.1f} seconds before retry...")
+                time.sleep(wait_time)
+            else:
+                print(f"[ERROR] All {max_retries} attempts failed for URL: {url}")
+                return None
 
 
 def parse_property_block(block):
@@ -72,11 +136,12 @@ def parse_property_block(block):
                 break
             desc_text += sib.get_text(" ", strip=True) + " "
         data['description'] = desc_text.strip()
+        data['description_chinese'] = translate_to_chinese(desc_text.strip())
 
     return data
 
 def parse_properties(html):
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
     properties = []
     # Try to find all property blocks (update selector as needed for Zoopla)
     blocks = soup.select(".listing-results-wrapper, .property-listing, .css-1e28vvi")
@@ -97,6 +162,7 @@ def parse_properties(html):
                             prod = item.get("item", {})
                             prop["title"] = prod.get("name")
                             prop["description"] = prod.get("description")
+                            prop["description_chinese"] = translate_to_chinese(prod.get("description", ""))
                             prop["price"] = "£" + prod.get("offers", {}).get("price", "")
                             prop["url"] = prod.get("url")
                             prop["image"] = prod.get("image")
@@ -118,20 +184,80 @@ def parse_properties(html):
                 properties.append(prop)
     return properties
 
-if __name__ == "__main__":
-    url = "https://www.zoopla.co.uk/for-sale/details/69607310/?search_identifier=a11e4602fdf1c0e865ef052e85635098b6810e25e0187a09d72eff9f95eee100&weekly_featured=1&utm_content=featured_listing"
-    html = fetch_property_html(url)
-    properties = parse_properties(html)
-    print(properties)
+def validate_property_data(property_data):
+    """Validate property data quality"""
+    required_fields = ['title', 'price', 'url']
+    for field in required_fields:
+        if not property_data.get(field):
+            return False, f"Missing required field: {field}"
+    
+    # Validate price format
+    price = property_data.get('price', '')
+    if not price.startswith('£') or not price[1:].replace(',', '').isdigit():
+        return False, f"Invalid price format: {price}"
+    
+    return True, "Valid"
 
+def deduplicate_properties(properties):
+    """Remove duplicate properties based on URL"""
+    seen_urls = set()
+    unique_properties = []
+    
+    for prop in properties:
+        url = prop.get('url', '')
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_properties.append(prop)
+    
+    return unique_properties
+
+def save_to_csv_with_metadata(properties, filename="properties.csv"):
+    """Save properties to CSV with metadata"""
+    if not properties:
+        print("[WARNING] No properties to save")
+        return
+    
+    # Add metadata
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[INFO] Saving {len(properties)} properties to {filename} at {timestamp}")
+    
+    # Validate and deduplicate
+    valid_properties = []
+    for prop in properties:
+        is_valid, message = validate_property_data(prop)
+        if is_valid:
+            valid_properties.append(prop)
+        else:
+            print(f"[WARNING] Invalid property data: {message}")
+    
+    unique_properties = deduplicate_properties(valid_properties)
+    print(f"[INFO] After validation and deduplication: {len(unique_properties)} properties")
+    
     # Write to CSV
-    if properties:
-        keys = set()
-        for prop in properties:
-            keys.update(prop.keys())
-        keys = list(keys)
-        with open("properties.csv", "w", newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=keys)
-            writer.writeheader()
-            writer.writerows(properties)
-        print(f"[INFO] Saved {len(properties)} properties to properties.csv")
+    keys = set()
+    for prop in unique_properties:
+        keys.update(prop.keys())
+    keys = list(keys)
+    
+    with open(filename, "w", newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(unique_properties)
+    
+    print(f"[SUCCESS] Saved {len(unique_properties)} properties to {filename}")
+
+if __name__ == "__main__":
+    url = "https://www.zoopla.co.uk/for-sale/property/n10/?q=N10&radius=1&search_source=for-sale"
+    
+    print(f"[INFO] Starting property scraping at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    html = fetch_property_html(url)
+    if html:
+        properties = parse_properties(html)
+        print(f"[INFO] Successfully extracted {len(properties)} properties")
+        print(f"[INFO] Translation completed for all descriptions")
+        
+        # Save with validation and deduplication
+        save_to_csv_with_metadata(properties)
+    else:
+        print("[ERROR] Failed to fetch HTML, skipping data processing")

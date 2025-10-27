@@ -1,0 +1,178 @@
+/* pages/index/index.wxss */
+.container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f5f5f5;
+}
+
+.search-bar {
+  display: flex;
+  padding: 20rpx;
+  background-color: #fff;
+  align-items: center;
+}
+
+.search-input {
+  flex: 1;
+  height: 60rpx;
+  background-color: #f5f5f5;
+  border-radius: 30rpx;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+}
+
+.search-btn {
+  width: 120rpx;
+  height: 60rpx;
+  background-color: #3cc51f;
+  color: #fff;
+  border-radius: 30rpx;
+  margin-left: 20rpx;
+  font-size: 26rpx;
+}
+
+.filter-bar {
+  display: flex;
+  padding: 20rpx;
+  background-color: #fff;
+  margin-bottom: 20rpx;
+  align-items: center;
+}
+
+.filter-btn, .clear-btn {
+  height: 60rpx;
+  padding: 0 30rpx;
+  background-color: #3cc51f;
+  color: #fff;
+  border-radius: 30rpx;
+  font-size: 26rpx;
+  margin-right: 10rpx;
+}
+
+.clear-btn {
+  background-color: #ff6b6b;
+}
+
+.filter-item {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10rpx 20rpx;
+  background-color: #f5f5f5;
+  border-radius: 20rpx;
+  margin: 0 10rpx;
+  font-size: 26rpx;
+}
+
+.filter-panel {
+  background-color: #fff;
+  padding: 30rpx;
+  margin: 0 20rpx 20rpx;
+  border-radius: 20rpx;
+}
+
+.filter-title {
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 20rpx;
+}
+
+.price-filter {
+  margin-bottom: 30rpx;
+}
+
+.price-display {
+  text-align: center;
+  font-size: 28rpx;
+  color: #3cc51f;
+  font-weight: bold;
+  margin-top: 20rpx;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+.btn-primary {
+  flex: 1;
+  background-color: #3cc51f;
+  color: #fff;
+  border-radius: 30rpx;
+}
+
+.btn-secondary {
+  flex: 1;
+  background-color: #f5f5f5;
+  color: #666;
+  border-radius: 30rpx;
+}
+
+.property-list {
+  flex: 1;
+  padding: 20rpx;
+}
+
+.property-item {
+  display: flex;
+  background-color: #fff;
+  border-radius: 20rpx;
+  margin-bottom: 20rpx;
+  overflow: hidden;
+}
+
+.property-image {
+  width: 200rpx;
+  height: 200rpx;
+  background-color: #f0f0f0;
+}
+
+.property-info {
+  flex: 1;
+  padding: 20rpx;
+}
+
+.property-title {
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 10rpx;
+}
+
+.property-price {
+  font-size: 32rpx;
+  color: #f40;
+  font-weight: bold;
+  margin-bottom: 10rpx;
+}
+
+.property-meta {
+  font-size: 24rpx;
+  color: #999;
+  margin-bottom: 10rpx;
+}
+
+.property-meta text {
+  margin-right: 20rpx;
+}
+
+.property-desc {
+  font-size: 24rpx;
+  color: #666;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.loading, .no-more, .empty {
+  text-align: center;
+  padding: 40rpx;
+  color: #999;
+  font-size: 26rpx;
+}
