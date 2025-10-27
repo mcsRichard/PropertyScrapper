@@ -1,9 +1,17 @@
 # api/properties.py
+# -*- coding: utf-8 -*-
 from flask import Blueprint, request, jsonify
 from sqlalchemy.orm import Session
 from models.database import get_db
 from utils.database import PropertyService
 from typing import Dict, Any
+import sys
+import io
+
+# 设置标准输出编码为UTF-8
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 properties_bp = Blueprint('properties', __name__, url_prefix='/api/properties')
 

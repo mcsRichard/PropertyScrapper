@@ -24,3 +24,10 @@ class Config:
     # 分页配置
     DEFAULT_PAGE_SIZE = 20
     MAX_PAGE_SIZE = 100
+    
+    # 腾讯云COS配置
+    COS_SECRET_ID = os.getenv('COS_SECRET_ID', '')
+    COS_SECRET_KEY = os.getenv('COS_SECRET_KEY', '')
+    COS_REGION = os.getenv('COS_REGION', 'ap-shanghai')
+    COS_BUCKET = os.getenv('COS_BUCKET', 'your-bucket-name')
+    COS_DOMAIN = os.getenv('COS_DOMAIN', '')  # 可选：自定义域名

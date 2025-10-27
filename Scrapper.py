@@ -1,5 +1,4 @@
 
-
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -10,6 +9,22 @@ import json
 import time
 import random
 from datetime import datetime
+import sys
+import os
+
+# 添加backend目录到路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+
+# 导入COS上传器和配置
+try:
+    from backend.utils.cos_uploader import create_cos_uploader
+    from backend.config import Config
+    COS_ENABLED = True
+    print("[INFO] COS uploader enabled")
+except ImportError as e:
+    print(f"[WARNING] COS uploader not available: {e}")
+    print("[WARNING] Please install: pip install cos-python-sdk-v5")
+    COS_ENABLED = False
 
 def translate_to_chinese(text):
     """Translate English text to Chinese using Google Translate API"""
@@ -211,6 +226,50 @@ def deduplicate_properties(properties):
     
     return unique_properties
 
+def upload_image_to_cos(property_data):
+    """
+    上传图片到腾讯云COS
+    
+    Args:
+        property_data: 房产数据字典
+        
+    Returns:
+        更新后的房产数据（包含COS图片URL）
+    """
+    if not COS_ENABLED:
+        print("[INFO] COS uploader not enabled, skipping image upload")
+        return property_data
+    
+    original_image_url = property_data.get('image')
+    
+    if not original_image_url or not original_image_url.startswith('http'):
+        print(f"[INFO] No valid image URL, skipping upload")
+        return property_data
+    
+    try:
+        # 创建COS上传器
+        cos_uploader = create_cos_uploader(Config())
+        
+        # 上传图片到COS
+        print(f"[COS] Uploading image from {original_image_url}")
+        cos_image_url = cos_uploader.upload_image_from_url(original_image_url)
+        
+        if cos_image_url:
+            # 更新房产数据中的图片URL为COS URL
+            property_data['image_url'] = cos_image_url
+            property_data['original_image_url'] = original_image_url  # 保留原始URL
+            print(f"[COS] Image uploaded successfully: {cos_image_url}")
+        else:
+            print(f"[COS] Failed to upload image, using original URL")
+            property_data['image_url'] = original_image_url
+        
+    except Exception as e:
+        print(f"[COS] Error uploading image: {e}")
+        # 如果上传失败，使用原始URL
+        property_data['image_url'] = original_image_url
+    
+    return property_data
+
 def save_to_csv_with_metadata(properties, filename="properties.csv"):
     """Save properties to CSV with metadata"""
     if not properties:
@@ -232,6 +291,17 @@ def save_to_csv_with_metadata(properties, filename="properties.csv"):
     
     unique_properties = deduplicate_properties(valid_properties)
     print(f"[INFO] After validation and deduplication: {len(unique_properties)} properties")
+    
+    # 上传图片到COS（如果启用）
+    if COS_ENABLED:
+        print(f"[INFO] Starting image upload to COS...")
+        uploaded_properties = []
+        for prop in unique_properties:
+            uploaded_prop = upload_image_to_cos(prop)
+            uploaded_properties.append(uploaded_prop)
+            time.sleep(0.5)  # 避免请求过快
+        unique_properties = uploaded_properties
+        print(f"[INFO] Image upload completed")
     
     # Write to CSV
     keys = set()

@@ -5,6 +5,13 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import sys
 import os
+import io
+
+# 修复Windows下中文编码问题
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
 from config import Config
@@ -57,7 +64,7 @@ def get_properties():
         property_type = request.args.get('property_type', type=str)
         bedrooms = request.args.get('bedrooms', type=int)
         
-        print(f"[API] 请求参数: page={page}, limit={limit}, min_price={min_price}, max_price={max_price}, property_type={property_type}, bedrooms={bedrooms}")
+        # print(f"[API] 请求参数: page={page}, limit={limit}, min_price={min_price}, max_price={max_price}, property_type={property_type}, bedrooms={bedrooms}")
         
         offset = (page - 1) * limit
         
@@ -76,7 +83,7 @@ def get_properties():
             where_clauses.append(f"bedrooms = {bedrooms}")
         
         where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-        print(f"[API] SQL查询: SELECT * FROM properties{where_sql}")
+        # print(f"[API] SQL查询: SELECT * FROM properties{where_sql}")
         
         # 获取总数
         cursor.execute(f"SELECT COUNT(*) as total FROM properties{where_sql}")
@@ -140,5 +147,5 @@ def get_property_detail(property_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print(f"[INFO] Starting Property API server on {Config.API_HOST}:{Config.API_PORT}")
+    # print(f"[INFO] Starting Property API server on {Config.API_HOST}:{Config.API_PORT}")
     app.run(host=Config.API_HOST, port=Config.API_PORT, debug=Config.DEBUG)
