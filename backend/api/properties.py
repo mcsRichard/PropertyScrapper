@@ -27,6 +27,7 @@ def get_properties():
         property_type = request.args.get('property_type')
         bedrooms = request.args.get('bedrooms', type=int)
         location = request.args.get('location')
+        listing_type = request.args.get('listing_type')
         
         # 限制每页最大数量
         limit = min(limit, 100)
@@ -43,7 +44,8 @@ def get_properties():
             max_price=max_price,
             property_type=property_type,
             bedrooms=bedrooms,
-            location=location
+            location=location,
+            listing_type=listing_type
         )
         
         # 转换为字典格式
@@ -58,6 +60,7 @@ def get_properties():
                 'bedrooms': prop.bedrooms,
                 'bathrooms': prop.bathrooms,
                 'property_type': prop.property_type,
+                'listing_type': prop.listing_type,
                 'location': prop.location,
                 'postcode': prop.postcode,
                 'description': prop.description,
@@ -110,6 +113,7 @@ def get_property_detail(property_id: int):
             'bedrooms': property_obj.bedrooms,
             'bathrooms': property_obj.bathrooms,
             'property_type': property_obj.property_type,
+            'listing_type': property_obj.listing_type,
             'location': property_obj.location,
             'postcode': property_obj.postcode,
             'description': property_obj.description,
@@ -162,6 +166,7 @@ def search_properties():
                 'bedrooms': prop.bedrooms,
                 'bathrooms': prop.bathrooms,
                 'property_type': prop.property_type,
+                'listing_type': prop.listing_type,
                 'location': prop.location,
                 'postcode': prop.postcode,
                 'description': prop.description,

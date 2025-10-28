@@ -316,18 +316,49 @@ def save_to_csv_with_metadata(properties, filename="properties.csv"):
     
     print(f"[SUCCESS] Saved {len(unique_properties)} properties to {filename}")
 
+def detect_listing_type(url):
+    """Detect if URL is for sale or for rent"""
+    if 'to-rent' in url or '/rent/' in url:
+        return 'for_rent'
+    elif 'for-sale' in url or '/sale/' in url:
+        return 'for_sale'
+    else:
+        # Default to for_sale for backwards compatibility
+        return 'for_sale'
+
 if __name__ == "__main__":
-    url = "https://www.zoopla.co.uk/for-sale/property/n10/?q=N10&radius=1&search_source=for-sale"
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Scrape properties from Zoopla')
+    parser.add_argument('--url', type=str, 
+                        default='https://www.zoopla.co.uk/for-sale/property/n10/?q=N10&radius=1&search_source=for-sale',
+                        help='URL to scrape from')
+    parser.add_argument('--output', type=str, default='properties.csv',
+                        help='Output CSV filename')
+    
+    args = parser.parse_args()
+    
+    url = args.url
+    output_file = args.output
+    
+    # Detect listing type from URL
+    listing_type = detect_listing_type(url)
+    print(f"[INFO] Detected listing type: {listing_type}")
     
     print(f"[INFO] Starting property scraping at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[INFO] URL: {url}")
     
     html = fetch_property_html(url)
     if html:
         properties = parse_properties(html)
+        # Add listing_type to each property
+        for prop in properties:
+            prop['listing_type'] = listing_type
+        
         print(f"[INFO] Successfully extracted {len(properties)} properties")
         print(f"[INFO] Translation completed for all descriptions")
         
         # Save with validation and deduplication
-        save_to_csv_with_metadata(properties)
+        save_to_csv_with_metadata(properties, filename=output_file)
     else:
         print("[ERROR] Failed to fetch HTML, skipping data processing")

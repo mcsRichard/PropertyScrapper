@@ -22,6 +22,7 @@ class Property(Base):
     bedrooms = Column(Integer, index=True)
     bathrooms = Column(Integer)
     property_type = Column(String(100), index=True)  # flat, house, etc.
+    listing_type = Column(String(20), index=True, default='for_sale')  # for_sale or for_rent
     location = Column(String(255), index=True)
     postcode = Column(String(20), index=True)
     description = Column(Text)

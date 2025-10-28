@@ -30,6 +30,7 @@ class PropertyService:
             bedrooms=bedrooms,
             bathrooms=property_data.get('bathrooms'),
             property_type=property_type,
+            listing_type=property_data.get('listing_type', 'for_sale'),
             location=property_data.get('location'),
             postcode=property_data.get('postcode'),
             description=property_data.get('description'),
@@ -50,7 +51,8 @@ class PropertyService:
                       max_price: Optional[int] = None,
                       property_type: Optional[str] = None,
                       bedrooms: Optional[int] = None,
-                      location: Optional[str] = None) -> Dict[str, Any]:
+                      location: Optional[str] = None,
+                      listing_type: Optional[str] = None) -> Dict[str, Any]:
         """获取房产列表"""
         query = self.db.query(Property)
         
@@ -68,6 +70,8 @@ class PropertyService:
                 Property.location.ilike(f"%{location}%"),
                 Property.postcode.ilike(f"%{location}%")
             ))
+        if listing_type:
+            query = query.filter(Property.listing_type == listing_type)
         
         # 获取总数
         total = query.count()

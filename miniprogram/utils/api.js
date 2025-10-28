@@ -53,6 +53,9 @@ function getProperties(page = 1, limit = 20, filters = {}) {
   if (filters.bedrooms !== null && filters.bedrooms !== undefined && filters.bedrooms !== '') {
     url += `&bedrooms=${filters.bedrooms}`
   }
+  if (filters.listingType) {
+    url += `&listing_type=${filters.listingType}`
+  }
   
   console.log('API请求URL:', url)
   return request(url)

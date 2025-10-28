@@ -8,7 +8,16 @@
 
   <!-- 筛选栏 -->
   <view class="filter-bar">
-    <button class="filter-btn" bindtap="toggleFilter">筛选</button>
+    <!-- 房产类型切换 -->
+    <view class="listing-type-tabs">
+      <view class="tab-item {{listingType === 'for_sale' ? 'active' : ''}}" bindtap="onListingTypeChange" data-type="for_sale">
+        <text>出售</text>
+      </view>
+      <view class="tab-item {{listingType === 'for_rent' ? 'active' : ''}}" bindtap="onListingTypeChange" data-type="for_rent">
+        <text>出租</text>
+      </view>
+    </view>
+    
     <picker mode="selector" range="{{bedroomOptions}}" range-key="label" bindchange="onBedroomChange">
       <view class="filter-item">
         <text>{{currentBedroom || '卧室'}}</text>

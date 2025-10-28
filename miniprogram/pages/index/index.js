@@ -16,6 +16,7 @@ Page({
       propertyType: '',
       bedrooms: ''
     },
+    listingType: 'for_rent', // 默认显示出租房产
     // 筛选选项
     bedroomOptions: [
       { label: '全部', value: '' },
@@ -30,6 +31,10 @@ Page({
       { label: '公寓', value: 'flat' },
       { label: '别墅', value: 'house' },
       { label: '其他', value: 'other' }
+    ],
+    listingTypeOptions: [
+      { label: '出售', value: 'for_sale' },
+      { label: '出租', value: 'for_rent' }
     ],
     currentBedroom: '全部',
     currentType: '全部',
@@ -75,7 +80,8 @@ Page({
       minPrice: this.data.filters.minPrice || null,
       maxPrice: this.data.filters.maxPrice || null,
       propertyType: this.data.filters.propertyType || null,
-      bedrooms: this.data.filters.bedrooms || null
+      bedrooms: this.data.filters.bedrooms || null,
+      listingType: this.data.listingType || 'for_sale'
     }
     
     console.log('筛选参数:', filters)
@@ -304,5 +310,19 @@ Page({
           icon: 'none'
         })
       })
+  },
+
+  /**
+   * 切换房产类型（出售/出租）
+   */
+  onListingTypeChange(e) {
+    const type = e.currentTarget.dataset.type
+    this.setData({
+      listingType: type,
+      properties: [],
+      page: 1,
+      hasMore: true
+    })
+    this.loadProperties(true)
   }
 })

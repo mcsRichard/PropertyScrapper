@@ -9,3 +9,4 @@
 2. 在小程序中测试图片显示
 3. 访问 http://localhost:5000/api/properties/1 查看数据
 
+
