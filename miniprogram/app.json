@@ -5,9 +5,10 @@
   ],
   "window": {
     "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#fff",
-    "navigationBarTitleText": "英国房产",
-    "navigationBarTextStyle": "black"
+    "navigationBarBackgroundColor": "#C8102E",
+    "navigationBarTitleText": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 UK Property",
+    "navigationBarTextStyle": "white",
+    "enablePullDownRefresh": true
   },
   "networkTimeout": {
     "request": 10000,

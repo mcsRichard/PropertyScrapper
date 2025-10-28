@@ -1,5 +1,16 @@
 <!--pages/index/index.wxml-->
 <view class="container">
+  <!-- Logo Header -->
+  <view class="logo-header">
+    <view class="uk-icon">
+      <view class="icon-bg">🏛️</view>
+    </view>
+    <view class="logo-text">
+      <view class="logo-title">UK Property</view>
+      <view class="logo-subtitle">英国优质房产服务</view>
+    </view>
+  </view>
+  
   <!-- 搜索栏 -->
   <view class="search-bar">
     <input class="search-input" placeholder="搜索房产..." bindinput="onSearchInput" value="{{searchKeyword}}" />
@@ -18,35 +29,63 @@
       </view>
     </view>
     
-    <picker mode="selector" range="{{bedroomOptions}}" range-key="label" bindchange="onBedroomChange">
-      <view class="filter-item">
-        <text>{{currentBedroom || '卧室'}}</text>
-      </view>
-    </picker>
-    
-    <picker mode="selector" range="{{typeOptions}}" range-key="label" bindchange="onTypeChange">
-      <view class="filter-item">
-        <text>{{currentType || '类型'}}</text>
-      </view>
-    </picker>
-    
-    <button class="clear-btn" bindtap="clearFilter" wx:if="{{filters.minPrice || filters.maxPrice || filters.propertyType || filters.bedrooms}}">清除</button>
-  </view>
-
-  <!-- 筛选面板 -->
-  <view class="filter-panel" wx:if="{{showFilter}}">
-    <view class="filter-title">价格范围</view>
-    <view class="price-filter">
-      <slider min="0" max="2000000" value="{{priceRange[0]}}" show-value bindchange="onPriceStartChange" />
-      <slider min="0" max="2000000" value="{{priceRange[1]}}" show-value bindchange="onPriceEndChange" />
-      <view class="price-display">
-        £{{priceRange[0].toLocaleString()}} - £{{priceRange[1].toLocaleString()}}
+    <!-- 筛选按钮组 -->
+    <view class="filter-buttons">
+      <view class="filter-label">筛选：</view>
+      
+      <picker mode="selector" range="{{bedroomOptions}}" range-key="label" bindchange="onBedroomChange">
+        <view class="filter-item {{currentBedroom !== '全部' ? 'active' : ''}}">
+          <text class="filter-icon">🛏</text>
+          <text>{{currentBedroom || '全部'}}</text>
+        </view>
+      </picker>
+      
+      <picker mode="selector" range="{{typeOptions}}" range-key="label" bindchange="onTypeChange">
+        <view class="filter-item {{currentType !== '全部' ? 'active' : ''}}">
+          <text class="filter-icon">🏠</text>
+          <text>{{currentType || '全部'}}</text>
+        </view>
+      </picker>
+      
+      <view class="filter-item price-filter-btn {{filters.minPrice || filters.maxPrice ? 'active' : ''}}" bindtap="onPriceFilterTap">
+        <text class="filter-icon">💰</text>
+        <text>{{priceDisplay || '价格'}}</text>
       </view>
     </view>
     
+    <button class="clear-btn" bindtap="clearFilter" wx:if="{{filters.minPrice || filters.maxPrice || filters.propertyType || filters.bedrooms}}">清除筛选</button>
+  </view>
+
+  <!-- 价格筛选面板 -->
+  <view class="filter-panel" wx:if="{{showFilter}}">
+    <view class="filter-title">选择价格范围</view>
+    
+    <!-- 快速选择价格区间 -->
+    <view class="price-presets">
+      <view wx:for="{{pricePresets}}" wx:key="index" class="price-preset-item {{pricePresetSelected == index ? 'selected' : ''}}" bindtap="onPricePresetTap" data-index="{{index}}">
+        <text>{{item.label}}</text>
+      </view>
+    </view>
+    
+    <!-- 手动输入价格范围 -->
+    <view class="manual-price-input">
+      <view class="input-group">
+        <text class="input-label">{{listingType === 'for_sale' ? '最低价格 (£)' : '最低月租金 (£)'}}</text>
+        <input type="number" class="price-input" placeholder="0" value="{{priceRange[0]}}" bindinput="onMinPriceInput" />
+      </view>
+      <view class="input-group">
+        <text class="input-label">{{listingType === 'for_sale' ? '最高价格 (£)' : '最高月租金 (£)'}}</text>
+        <input type="number" class="price-input" placeholder="{{listingType === 'for_sale' ? '2000000' : '4000'}}" value="{{priceRange[1]}}" bindinput="onMaxPriceInput" />
+      </view>
+    </view>
+    
+    <view class="price-display">
+      {{priceDisplay}}
+    </view>
+    
     <view class="filter-actions">
-      <button class="btn-primary" bindtap="applyFilter">应用筛选</button>
-      <button class="btn-secondary" bindtap="clearFilter">清除</button>
+      <button class="btn-primary" bindtap="applyPriceFilter">确定</button>
+      <button class="btn-secondary" bindtap="cancelPriceFilter">取消</button>
     </view>
   </view>
 

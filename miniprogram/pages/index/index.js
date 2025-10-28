@@ -38,10 +38,31 @@ Page({
     ],
     currentBedroom: '全部',
     currentType: '全部',
-    priceRange: [0, 2000000]
+    priceRange: [0, 4000], // 默认出租房产的月租金范围
+    priceDisplay: '价格',
+    pricePresetSelected: -1,
+    // 出售房产的价格预设（总价）
+    forSalePricePresets: [
+      { label: '£30万以下', minPrice: 0, maxPrice: 300000 },
+      { label: '£30-50万', minPrice: 300000, maxPrice: 500000 },
+      { label: '£50-100万', minPrice: 500000, maxPrice: 1000000 },
+      { label: '£100-200万', minPrice: 1000000, maxPrice: 2000000 },
+      { label: '£200万以上', minPrice: 2000000, maxPrice: 999999999 }
+    ],
+    // 出租房产的价格预设（月租金）
+    forRentPricePresets: [
+      { label: '£800/月以下', minPrice: 0, maxPrice: 800 },
+      { label: '£800-1500/月', minPrice: 800, maxPrice: 1500 },
+      { label: '£1500-2500/月', minPrice: 1500, maxPrice: 2500 },
+      { label: '£2500-4000/月', minPrice: 2500, maxPrice: 4000 },
+      { label: '£4000/月以上', minPrice: 4000, maxPrice: 999999 }
+    ],
+    pricePresets: [] // 将根据listingType动态设置
   },
 
   onLoad() {
+    // 初始化价格预设
+    this.updatePricePresets()
     this.loadProperties()
   },
 
@@ -145,15 +166,6 @@ Page({
   },
 
   /**
-   * 显示/隐藏筛选面板
-   */
-  toggleFilter() {
-    this.setData({
-      showFilter: !this.data.showFilter
-    })
-  },
-
-  /**
    * 卧室数量筛选
    */
   onBedroomChange(e) {
@@ -189,48 +201,14 @@ Page({
     this.loadProperties(true)
   },
 
-  /**
-   * 价格最小值变化
-   */
-  onPriceStartChange(e) {
-    const value = e.detail.value
-    const priceRange = this.data.priceRange
-    this.setData({
-      priceRange: [value, priceRange[1]]
-    })
-  },
-
-  /**
-   * 价格最大值变化
-   */
-  onPriceEndChange(e) {
-    const value = e.detail.value
-    const priceRange = this.data.priceRange
-    this.setData({
-      priceRange: [priceRange[0], value]
-    })
-  },
-
-  /**
-   * 价格范围筛选
-   */
-  onPriceChange(e) {
-    const minPrice = e.detail.value[0]
-    const maxPrice = e.detail.value[1]
-    this.setData({
-      priceRange: [minPrice, maxPrice],
-      'filters.minPrice': minPrice,
-      'filters.maxPrice': maxPrice,
-      page: 1,
-      hasMore: true
-    })
-    this.loadProperties(true)
-  },
 
   /**
    * 清除筛选
    */
   clearFilter() {
+    const listingType = this.data.listingType
+    const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
+    
     this.setData({
       filters: {
         minPrice: '',
@@ -240,31 +218,15 @@ Page({
       },
       currentBedroom: '全部',
       currentType: '全部',
-      priceRange: [0, 2000000],
+      priceRange: [0, defaultMax],
+      priceDisplay: '价格',
+      pricePresetSelected: -1,
       page: 1,
       hasMore: true
     })
     this.loadProperties(true)
   },
 
-  /**
-   * 应用筛选
-   */
-  applyFilter() {
-    // 将价格范围应用到筛选条件
-    const filters = this.data.filters
-    filters.minPrice = this.data.priceRange[0]
-    filters.maxPrice = this.data.priceRange[1]
-    
-    this.setData({
-      showFilter: false,
-      filters: filters,
-      page: 1,
-      hasMore: true
-    })
-    console.log('应用价格筛选:', filters)
-    this.loadProperties(true)
-  },
 
   /**
    * 搜索框输入
@@ -313,6 +275,30 @@ Page({
   },
 
   /**
+   * 更新价格预设选项
+   */
+  updatePricePresets() {
+    const listingType = this.data.listingType
+    if (listingType === 'for_sale') {
+      // 出售：使用总价预设，重置价格为0-200万
+      this.setData({
+        pricePresets: this.data.forSalePricePresets,
+        priceRange: [0, 2000000],
+        priceDisplay: '价格',
+        pricePresetSelected: -1
+      })
+    } else {
+      // 出租：使用月租金预设，重置价格为0-4000/月
+      this.setData({
+        pricePresets: this.data.forRentPricePresets,
+        priceRange: [0, 4000],
+        priceDisplay: '价格',
+        pricePresetSelected: -1
+      })
+    }
+  },
+
+  /**
    * 切换房产类型（出售/出租）
    */
   onListingTypeChange(e) {
@@ -321,8 +307,150 @@ Page({
       listingType: type,
       properties: [],
       page: 1,
+      hasMore: true,
+      // 清除价格筛选
+      'filters.minPrice': '',
+      'filters.maxPrice': ''
+    })
+    // 更新价格预设
+    this.updatePricePresets()
+    this.loadProperties(true)
+  },
+
+  /**
+   * 点击价格筛选按钮
+   */
+  onPriceFilterTap() {
+    this.setData({
+      showFilter: true
+    })
+  },
+
+  /**
+   * 选择价格预设
+   */
+  onPricePresetTap(e) {
+    const index = e.currentTarget.dataset.index
+    const preset = this.data.pricePresets[index]
+    this.setData({
+      priceRange: [preset.minPrice, preset.maxPrice],
+      pricePresetSelected: index,
+      priceDisplay: preset.label
+    })
+  },
+
+  /**
+   * 手动输入最低价格
+   */
+  onMinPriceInput(e) {
+    const value = parseInt(e.detail.value) || 0
+    const priceRange = this.data.priceRange
+    const newRange = [value, priceRange[1]]
+    const display = this.formatPriceRange(newRange)
+    this.setData({
+      priceRange: newRange,
+      pricePresetSelected: -1, // 清空预设选择
+      priceDisplay: display
+    })
+  },
+
+  /**
+   * 手动输入最高价格
+   */
+  onMaxPriceInput(e) {
+    const listingType = this.data.listingType
+    const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
+    const value = parseInt(e.detail.value) || defaultMax
+    const priceRange = this.data.priceRange
+    const newRange = [priceRange[0], value]
+    const display = this.formatPriceRange(newRange)
+    this.setData({
+      priceRange: newRange,
+      pricePresetSelected: -1, // 清空预设选择
+      priceDisplay: display
+    })
+  },
+
+  /**
+   * 格式化价格范围显示
+   */
+  formatPriceRange(priceRange) {
+    const minPrice = priceRange[0] || 0
+    const maxPrice = priceRange[1]
+    const listingType = this.data.listingType
+    
+    // 根据类型设置默认最大值
+    const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
+    
+    if (minPrice === 0 && maxPrice >= defaultMax) {
+      return '价格'
+    }
+    
+    if (listingType === 'for_sale') {
+      // 出售房产：用"万"表示（总价）
+      if (minPrice === 0 && maxPrice < defaultMax) {
+        return `£${(maxPrice / 1000000).toFixed(1)}万以下`
+      } else if (minPrice > 0 && maxPrice < defaultMax) {
+        return `£${(minPrice / 1000000).toFixed(1)}-${(maxPrice / 1000000).toFixed(1)}万`
+      } else if (minPrice > 0 && maxPrice >= defaultMax) {
+        return `£${(minPrice / 1000000).toFixed(1)}万以上`
+      }
+    } else {
+      // 出租房产：用"月"表示（月租金）
+      if (minPrice === 0 && maxPrice < defaultMax) {
+        return `£${maxPrice}/月以下`
+      } else if (minPrice > 0 && maxPrice < defaultMax) {
+        return `£${minPrice}-${maxPrice}/月`
+      } else if (minPrice > 0 && maxPrice >= defaultMax) {
+        return `£${minPrice}/月以上`
+      }
+    }
+    return '价格'
+  },
+
+  /**
+   * 应用价格筛选
+   */
+  applyPriceFilter() {
+    const filters = this.data.filters
+    filters.minPrice = this.data.priceRange[0]
+    filters.maxPrice = this.data.priceRange[1]
+    
+    // 如果选择了预设，就使用预设的显示，否则使用格式化的显示
+    let display = this.data.pricePresetSelected >= 0 ? 
+      this.data.pricePresets[this.data.pricePresetSelected].label : 
+      this.data.priceDisplay
+    
+    this.setData({
+      showFilter: false,
+      filters: filters,
+      priceDisplay: display,
+      page: 1,
       hasMore: true
     })
+    console.log('应用价格筛选:', filters)
     this.loadProperties(true)
+  },
+
+  /**
+   * 取消价格筛选
+   */
+  cancelPriceFilter() {
+    // 恢复原来的价格显示
+    const currentFilter = this.data.filters
+    const listingType = this.data.listingType
+    const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
+    let display = '价格'
+    if (currentFilter.minPrice || currentFilter.maxPrice) {
+      const range = [currentFilter.minPrice || 0, currentFilter.maxPrice || defaultMax]
+      display = this.formatPriceRange(range)
+    }
+    
+    this.setData({
+      showFilter: false,
+      priceRange: [currentFilter.minPrice || 0, currentFilter.maxPrice || defaultMax],
+      pricePresetSelected: -1,
+      priceDisplay: display
+    })
   }
 })

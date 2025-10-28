@@ -1,6 +1,6 @@
 /* app.wxss */
 page {
-  background-color: #f5f5f5;
+  background-color: #F8F8F8;
 }
 
 /**app.wxss**/
@@ -12,4 +12,13 @@ container {
   justify-content: space-between;
   padding: 200rpx 0;
   box-sizing: border-box;
+}
+
+/* 英国主题变量 */
+page {
+  --uk-red: #C8102E;
+  --uk-blue: #012169;
+  --uk-white: #FFFFFF;
+  --uk-gray: #F5F5F5;
+  --uk-text: #333333;
 }
