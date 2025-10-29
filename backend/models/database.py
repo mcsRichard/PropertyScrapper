@@ -1,5 +1,5 @@
 # models/database.py
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -35,13 +35,35 @@ class Property(Base):
 class PropertyImage(Base):
     """房产图片模型"""
     __tablename__ = "property_images"
-    
+
     id = Column(Integer, primary_key=True, index=True)
-    property_id = Column(Integer, index=True)
+    property_id = Column(Integer, ForeignKey('properties.id'), index=True, nullable=False)
+    # 原始来源URL（如Zoopla图片地址）
+    source_url = Column(String(500))
+    # COS访问URL（对外可访问）
     image_url = Column(String(500))
-    image_path = Column(String(500))  # 本地存储路径
-    is_primary = Column(Boolean, default=False)
+    # COS对象键（用于幂等与定位对象）
+    cos_key = Column(String(500))
+    # 可选：本地临时保存路径
+    image_path = Column(String(500))
+    # 在房源图片中的顺序（从0或1开始均可，前端按此排序显示）
+    order_index = Column(Integer, default=0, index=True)
+    # 主图标记
+    is_primary = Column(Boolean, default=False, index=True)
+    # 可选：图片尺寸
+    width = Column(Integer)
+    height = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # 去重与查询优化：
+    __table_args__ = (
+        # 同一房源下的顺序唯一
+        UniqueConstraint('property_id', 'order_index', name='uq_property_image_order'),
+        # 同一COS对象键全局唯一（若使用内容哈希命名，可确保幂等）
+        UniqueConstraint('cos_key', name='uq_property_image_cos_key'),
+        # 常用查询索引
+        Index('idx_property_id_created', 'property_id', 'created_at')
+    )
 
 class Location(Base):
     """区域模型"""

@@ -123,6 +123,20 @@ def get_property_detail(property_id: int):
             'created_at': property_obj.created_at.isoformat() if property_obj.created_at else None,
             'updated_at': property_obj.updated_at.isoformat() if property_obj.updated_at else None
         }
+
+        # 追加图片列表
+        images = property_service.get_images_by_property_id(property_id)
+        property_data['images'] = [{
+            'id': img.id,
+            'source_url': img.source_url,
+            'image_url': img.image_url,
+            'cos_key': img.cos_key,
+            'order_index': img.order_index,
+            'is_primary': img.is_primary,
+            'width': img.width,
+            'height': img.height,
+            'created_at': img.created_at.isoformat() if img.created_at else None
+        } for img in images]
         
         return jsonify({
             'success': True,

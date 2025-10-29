@@ -3,11 +3,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
+import urllib.parse
 import csv
 import requests
 import json
 import time
 import random
+import re
 from datetime import datetime
 import sys
 import os
@@ -85,7 +87,18 @@ def fetch_property_html(url, max_retries=3):
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
             driver.get(url)
-            time.sleep(random.uniform(2, 5))  # Random delay to avoid detection
+            # 等待页面加载，特别是图片
+            time.sleep(random.uniform(3, 6))  # 增加等待时间确保图片加载
+            
+            # 尝试滚动页面以触发懒加载图片
+            try:
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(1)
+                driver.execute_script("window.scrollTo(0, 0);")
+                time.sleep(1)
+            except Exception:
+                pass
+            
             html = driver.page_source
             driver.quit()
             
@@ -199,6 +212,177 @@ def parse_properties(html):
                 properties.append(prop)
     return properties
 
+def fetch_property_html_fast(url, timeout=12):
+    """优先用 requests 抓取详情页，失败再由上层回退到 Selenium"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+            'Referer': 'https://www.zoopla.co.uk/',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-GB,en;q=0.9'
+        }
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        if resp.status_code == 200 and resp.text:
+            return resp.text
+        return None
+    except Exception:
+        return None
+
+def extract_image_urls_from_detail_html(html, base_url: str = ""):
+    """从详情页HTML提取所有图片URL"""
+    soup = BeautifulSoup(html, "html.parser")
+    urls = []
+    
+    # 方法1: 从所有img和source标签提取
+    for el in soup.select('img,source'):
+        # 尝试多个属性
+        src = (el.get('src') or el.get('data-src') or 
+               el.get('data-lazy-src') or el.get('data-original') or
+               el.get('srcset') or el.get('data-srcset'))
+        if not src:
+            continue
+        # srcset 取第一个（可能有多个尺寸，如：url1 1x, url2 2x）
+        if ' ' in src:
+            # 如果是srcset格式，取第一个URL
+            parts = src.split(',')
+            src = parts[0].strip().split(' ')[0]
+        # 相对路径转绝对
+        if base_url and src and src.startswith('/'):
+            try:
+                src = urllib.parse.urljoin(base_url, src)
+            except Exception:
+                pass
+        if src and src.startswith('http') and any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+            urls.append(src)
+    
+    # 方法2: 查找Zoopla特定的图片容器（gallery、carousel等）
+    gallery_selectors = [
+        '.property-gallery img',
+        '.gallery img',
+        '.photo-gallery img',
+        '.carousel img',
+        '[class*="gallery"] img',
+        '[class*="photo"] img',
+        '[class*="image"] img',
+        'picture source',
+        'picture img'
+    ]
+    for selector in gallery_selectors:
+        for el in soup.select(selector):
+            src = (el.get('src') or el.get('data-src') or 
+                   el.get('data-lazy-src') or el.get('data-original') or
+                   el.get('srcset') or el.get('data-srcset'))
+            if src and ' ' in src:
+                src = src.split(' ')[0]
+            if src and src.startswith('http') and any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                if base_url and src.startswith('/'):
+                    src = urllib.parse.urljoin(base_url, src)
+                urls.append(src)
+    
+    # 方法3: 从JavaScript数据中提取（Zoopla可能将图片数据嵌入在JS变量中）
+    scripts = soup.find_all('script')
+    for script in scripts:
+        if script.string:
+            js_content = script.string
+            # 匹配JSON中的图片URL数组或单个URL
+            # 模式1: "image": "https://..."
+            # 模式2: "images": ["https://...", "https://..."]
+            # 模式3: imageUrl: 'https://...'
+            patterns = [
+                r'(?:image|photo|src|url)["\']?\s*[:=]\s*["\'](https?://[^"\']+\.(?:jpg|jpeg|png|webp))',
+                r'(?:images|photos|gallery)\s*[:=]\s*\[([^\]]+)\]',
+                r'["\'](https?://[^"\']*zoocdn[^"\']*\.(?:jpg|jpeg|png|webp))["\']'
+            ]
+            for pattern in patterns:
+                matches = re.findall(pattern, js_content, re.IGNORECASE)
+                for match in matches:
+                    if isinstance(match, tuple):
+                        match = match[0]
+                    if match and isinstance(match, str) and match.startswith('http'):
+                        urls.append(match)
+                    elif isinstance(match, str) and ',' in match:
+                        # 可能是数组字符串，分割提取
+                        for url in match.split(','):
+                            url = url.strip().strip('"\'')
+                            if url.startswith('http'):
+                                urls.append(url)
+
+    # 从 ld+json 中解析 image 字段
+    ldjson = soup.find_all("script", attrs={"type": "application/ld+json"})
+    for tag in ldjson:
+        try:
+            data = json.loads(tag.string or '{}')
+            if isinstance(data, dict):
+                images = data.get('image')
+                if isinstance(images, list):
+                    for u in images:
+                        if isinstance(u, str) and u.startswith('http'):
+                            urls.append(u)
+                elif isinstance(images, str) and images.startswith('http'):
+                    urls.append(images)
+        except Exception:
+            pass
+
+    # 初始去重（简单字符串去重）
+    temp_urls = []
+    seen_temp = set()
+    for u in urls:
+        if u not in seen_temp:
+            seen_temp.add(u)
+            temp_urls.append(u)
+    urls = temp_urls
+    
+    print(f"[DEBUG] 提取到 {len(urls)} 个图片URL（初始）")
+    
+    # 智能去重：合并同一图片的不同尺寸版本（Zoopla常见）
+    def extract_image_key(url):
+        """提取图片的唯一标识（去掉尺寸参数）"""
+        # Zoopla格式：https://lid.zoocdn.com/u/480/360/xxxxx.jpg
+        # 提取尺寸部分（如480/360）和文件名
+        # 匹配 zoocdn.com/u/WIDTH/HEIGHT/ 格式
+        match = re.search(r'/(\d+)/(\d+)/([^/]+\.(jpg|jpeg|png|webp))', url.lower())
+        if match:
+            width, height, filename = int(match.group(1)), int(match.group(2)), match.group(3)
+            # 返回（文件名，尺寸）用于排序和去重
+            return (filename, width * height)
+        # 如果不能匹配，返回完整URL的哈希
+        return (url.split('/')[-1] if '/' in url else url, 0)
+    
+    # 按图片唯一标识分组，每组保留最大尺寸版本
+    image_groups = {}
+    for url in urls:
+        key, size = extract_image_key(url)
+        # 如果还没记录，或者当前URL尺寸更大，则更新
+        if key not in image_groups or size > image_groups[key][1]:
+            image_groups[key] = (url, size)
+    
+    # 转换为列表并保持顺序（按首次出现的顺序）
+    seen_keys = set()
+    uniq = []
+    for url in urls:
+        key, _ = extract_image_key(url)
+        if key not in seen_keys:
+            seen_keys.add(key)
+            # 使用该key组中最大尺寸的URL
+            uniq.append(image_groups[key][0])
+    
+    print(f"[DEBUG] 智能去重后剩余 {len(uniq)} 个唯一图片URL")
+    if len(uniq) > 0:
+        print(f"[DEBUG] 前3个图片URL示例:")
+        for i, url in enumerate(uniq[:3], 1):
+            print(f"  {i}. {url[:100]}...")
+    
+    return uniq
+
+def fetch_all_images_for_property(detail_url):
+    """抓取详情页所有图片URL"""
+    html = fetch_property_html_fast(detail_url)
+    if not html:
+        html = fetch_property_html(detail_url)
+    if not html:
+        return []
+    return extract_image_urls_from_detail_html(html, base_url=detail_url)
+
 def validate_property_data(property_data):
     """Validate property data quality"""
     required_fields = ['title', 'price', 'url']
@@ -270,7 +454,7 @@ def upload_image_to_cos(property_data):
     
     return property_data
 
-def save_to_csv_with_metadata(properties, filename="properties.csv"):
+def save_to_csv_with_metadata(properties, filename="properties.csv", max_images_per_property: int = 0):
     """Save properties to CSV with metadata"""
     if not properties:
         print("[WARNING] No properties to save")
@@ -296,10 +480,40 @@ def save_to_csv_with_metadata(properties, filename="properties.csv"):
     if COS_ENABLED:
         print(f"[INFO] Starting image upload to COS...")
         uploaded_properties = []
-        for prop in unique_properties:
+        total_props = len(unique_properties)
+        for prop_index, prop in enumerate(unique_properties, start=1):
+            # 先处理单图（兼容旧逻辑）
             uploaded_prop = upload_image_to_cos(prop)
+
+            # 若存在房源详情URL，则尝试抓取详情页所有图片
+            detail_url = prop.get('url')
+            if detail_url and detail_url.startswith('http'):
+                all_imgs = fetch_all_images_for_property(detail_url)
+                total_imgs = len(all_imgs)
+                uploaded_urls = []
+                if all_imgs:
+                    # 应用每套房产的最大图片数上限（>0 时生效）
+                    if isinstance(max_images_per_property, int) and max_images_per_property and max_images_per_property > 0:
+                        all_imgs = all_imgs[:max_images_per_property]
+                        total_imgs = len(all_imgs)
+                    cos_uploader = create_cos_uploader(Config())
+                    for img_index, img_url in enumerate(all_imgs, start=1):
+                        print(f"[PROGRESS] Property {prop_index}/{total_props} - Image {img_index}/{total_imgs} downloading & uploading...")
+                        # 使用稳定key前缀，便于后续与DB的 order_index 对齐
+                        key_prefix = 'property-images'
+                        # 传入详情页作为 Referer，提升成功率
+                        cos_url = cos_uploader.upload_image_from_url(img_url, object_key=None, key_prefix=key_prefix, referer=detail_url)
+                        if cos_url:
+                            uploaded_urls.append(cos_url)
+                            print(f"[PROGRESS] Property {prop_index}/{total_props} - Image {img_index}/{total_imgs} done")
+                        else:
+                            print(f"[PROGRESS] Property {prop_index}/{total_props} - Image {img_index}/{total_imgs} failed")
+                        time.sleep(0.2)
+                if uploaded_urls:
+                    uploaded_prop['image_urls'] = uploaded_urls
+
             uploaded_properties.append(uploaded_prop)
-            time.sleep(0.5)  # 避免请求过快
+            time.sleep(0.3)  # 避免请求过快
         unique_properties = uploaded_properties
         print(f"[INFO] Image upload completed")
     
@@ -335,11 +549,14 @@ if __name__ == "__main__":
                         help='URL to scrape from')
     parser.add_argument('--output', type=str, default='properties.csv',
                         help='Output CSV filename')
+    parser.add_argument('--max-per-property', type=int, default=0,
+                        help='Maximum number of images per property (0 means unlimited)')
     
     args = parser.parse_args()
     
     url = args.url
     output_file = args.output
+    max_per_property = args.max_per_property
     
     # Detect listing type from URL
     listing_type = detect_listing_type(url)
@@ -359,6 +576,6 @@ if __name__ == "__main__":
         print(f"[INFO] Translation completed for all descriptions")
         
         # Save with validation and deduplication
-        save_to_csv_with_metadata(properties, filename=output_file)
+        save_to_csv_with_metadata(properties, filename=output_file, max_images_per_property=max_per_property)
     else:
         print("[ERROR] Failed to fetch HTML, skipping data processing")

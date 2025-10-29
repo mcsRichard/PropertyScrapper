@@ -19,3 +19,4 @@ app = create_app()
 # Web函数需要这个app对象
 # 云函数会自动处理HTTP请求并转发给Flask应用
 
+

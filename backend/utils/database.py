@@ -95,6 +95,52 @@ class PropertyService:
     def get_property_by_url(self, url: str) -> Optional[Property]:
         """根据URL获取房产"""
         return self.db.query(Property).filter(Property.url == url).first()
+
+    def get_images_by_property_id(self, property_id: int) -> List[PropertyImage]:
+        """获取房产所有图片，主图优先，其次按顺序"""
+        return (
+            self.db.query(PropertyImage)
+            .filter(PropertyImage.property_id == property_id)
+            .order_by(desc(PropertyImage.is_primary), asc(PropertyImage.order_index), asc(PropertyImage.id))
+            .all()
+        )
+
+    def upsert_property_image(self, property_id: int, image_data: Dict[str, Any]) -> PropertyImage:
+        """插入或更新房产图片（基于 cos_key 或 (property_id, order_index) 幂等）"""
+        cos_key = image_data.get('cos_key')
+        order_index = image_data.get('order_index', 0)
+
+        query = self.db.query(PropertyImage).filter(PropertyImage.property_id == property_id)
+        if cos_key:
+            existing = query.filter(PropertyImage.cos_key == cos_key).first()
+        else:
+            existing = query.filter(PropertyImage.order_index == order_index).first()
+
+        if existing:
+            # 更新可变字段
+            for k in ['source_url', 'image_url', 'image_path', 'is_primary', 'width', 'height', 'order_index', 'cos_key']:
+                if k in image_data and image_data[k] is not None:
+                    setattr(existing, k, image_data[k])
+            self.db.add(existing)
+            self.db.commit()
+            self.db.refresh(existing)
+            return existing
+
+        new_img = PropertyImage(
+            property_id=property_id,
+            source_url=image_data.get('source_url'),
+            image_url=image_data.get('image_url'),
+            image_path=image_data.get('image_path'),
+            is_primary=bool(image_data.get('is_primary', False)),
+            width=image_data.get('width'),
+            height=image_data.get('height'),
+            order_index=order_index,
+            cos_key=image_data.get('cos_key'),
+        )
+        self.db.add(new_img)
+        self.db.commit()
+        self.db.refresh(new_img)
+        return new_img
     
     def search_properties(self, keyword: str, page: int = 1, limit: int = 20) -> Dict[str, Any]:
         """搜索房产"""

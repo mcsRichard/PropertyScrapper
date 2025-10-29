@@ -3,8 +3,43 @@
   <view wx:if="{{loading}}" class="loading">加载中...</view>
   
   <view wx:if="{{!loading && property}}" class="property-detail">
-    <!-- 图片 -->
-    <image class="detail-image" src="{{property.image_url || '/image/default_property.png'}}" mode="widthFix" />
+    <!-- 图片轮播 -->
+    <view class="detail-swiper-wrapper" wx:if="{{property.imageUrls && property.imageUrls.length > 0}}">
+      <swiper 
+        class="detail-swiper" 
+        indicator-dots="{{true}}" 
+        indicator-color="rgba(255,255,255,0.5)"
+        indicator-active-color="#fff"
+        autoplay="{{false}}" 
+        circular="{{true}}"
+        interval="5000"
+        duration="500"
+        bindchange="onSwiperChange">
+        <block wx:for="{{property.imageUrls}}" wx:key="index" wx:for-item="imgUrl">
+          <swiper-item class="swiper-item">
+            <image 
+              class="detail-image" 
+              src="{{imgUrl}}" 
+              mode="aspectFill" 
+              bindtap="previewImage" 
+              binderror="onImageError"
+              data-index="{{index}}"
+              lazy-load="{{false}}" />
+          </swiper-item>
+        </block>
+      </swiper>
+      <!-- 图片计数器 -->
+      <view class="image-counter" wx:if="{{property.imageUrls && property.imageUrls.length > 1}}">
+        <text>{{currentImageIndex + 1}} / {{property.imageUrls.length}}</text>
+      </view>
+    </view>
+    
+    <!-- 如果没有任何图片，显示占位图 -->
+    <view class="detail-swiper-wrapper" wx:if="{{!property.imageUrls || property.imageUrls.length === 0}}">
+      <view class="detail-image-placeholder">
+        <text class="placeholder-text">暂无图片</text>
+      </view>
+    </view>
     
     <!-- 基本信息 -->
     <view class="detail-section">

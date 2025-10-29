@@ -8,6 +8,7 @@ import hashlib
 from datetime import datetime
 from typing import Optional
 import urllib.parse
+import re
 
 try:
     from qcloud_cos import CosConfig
@@ -177,7 +178,14 @@ class SimpleCOSUploader:
         self.secret_key = secret_key
         self.region = region
         self.bucket = bucket
-        self.domain = domain
+        # 清理domain：去掉注释、空格，验证是否为有效域名格式
+        domain_clean = domain.strip() if domain else ''
+        # 如果包含注释标记、空格或不是有效域名格式，则清空使用默认COS域名
+        if not domain_clean or '#' in domain_clean or '可选' in domain_clean or ' ' in domain_clean or (not domain_clean.startswith(('http://', 'https://')) and '.' not in domain_clean):
+            self.domain = ''
+        else:
+            # 去掉http://或https://前缀（返回URL时再加）
+            self.domain = domain_clean.replace('https://', '').replace('http://', '').strip('/')
         
         # 初始化COS客户端
         if SDK_AVAILABLE:
@@ -186,26 +194,93 @@ class SimpleCOSUploader:
         else:
             self.client = None
     
-    def upload_image_from_url(self, image_url: str, object_key: Optional[str] = None) -> Optional[str]:
-        """从URL上传图片到COS"""
+    def _get_image_url(self, object_key: str) -> str:
+        """生成图片访问URL（统一处理域名逻辑）"""
+        if self.domain and self.domain.strip():
+            return f"https://{self.domain}/{object_key}"
+        else:
+            # 使用默认COS域名
+            return f"https://{self.bucket}.cos.{self.region}.myqcloud.com/{object_key}"
+    
+    def _object_exists(self, object_key: str) -> bool:
+        """检查对象是否已存在（HEAD）"""
+        try:
+            if SDK_AVAILABLE and self.client:
+                self.client.head_object(Bucket=self.bucket, Key=object_key)
+                return True
+            # fallback
+            url = f"https://{self.bucket}.cos.{self.region}.myqcloud.com/{object_key}"
+            resp = requests.head(url, timeout=10)
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    def _stable_key_from_bytes(self, data: bytes, suggested_ext: str = ".jpg", key_prefix: str = "property-images") -> str:
+        """基于内容MD5生成稳定cos_key，避免重复上传"""
+        md5_hex = hashlib.md5(data).hexdigest()
+        shard = md5_hex[:2]
+        ext = suggested_ext if suggested_ext.startswith('.') else f".{suggested_ext}"
+        return f"{key_prefix}/{shard}/{md5_hex}{ext}"
+
+    def _normalize_image_url(self, url: str) -> str:
+        """清理图片URL，如去掉 .jpg:p 这类后缀和多余参数"""
+        if not url:
+            return url
+        u = url.strip()
+        # 去掉以 :p 等后缀（常见于缩略样式）
+        # 如 ...jpg:p 或 ...webp:p
+        u = re.sub(r"\.(jpg|jpeg|png|webp):[a-z]$", r".\1", u, flags=re.IGNORECASE)
+        # 一些 srcset 可能带逗号或空格后的描述，之前已切割，这里兜底
+        if ' ' in u:
+            u = u.split(' ')[0]
+        return u
+
+    def upload_image_from_url(self, image_url: str, object_key: Optional[str] = None, key_prefix: str = "property-images", referer: Optional[str] = None) -> Optional[str]:
+        """从URL上传图片到COS（幂等：基于内容MD5 生成key 并先做HEAD检查）"""
         if not SDK_AVAILABLE or not self.client:
             print("[COS] SDK not available, fallback to requests")
-            return self._upload_with_requests(image_url, object_key)
+            return self._upload_with_requests(image_url, object_key, key_prefix)
         
         try:
-            # 下载图片
+            # 下载图片（带UA与Referer，重试）
+            image_url = self._normalize_image_url(image_url)
             print(f"[COS] 正在下载: {image_url}")
-            response = requests.get(image_url, timeout=30)
-            response.raise_for_status()
-            image_data = response.content
-            
-            # 生成对象key
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+                'Referer': referer or 'https://www.zoopla.co.uk/'
+            }
+            image_data = None
+            last_resp = None
+            for _ in range(3):
+                try:
+                    response = requests.get(image_url, headers=headers, timeout=20)
+                    last_resp = response
+                    if response.status_code == 200:
+                        image_data = response.content
+                        break
+                except Exception:
+                    time.sleep(0.3)
+            if image_data is None:
+                status = getattr(last_resp, 'status_code', 'NA')
+                print(f"[COS] 下载失败 status={status} url={image_url} referer={headers.get('Referer')} 跳过")
+                return None
+
+            # 生成稳定对象key（优先用内容MD5）
             if not object_key:
-                filename = os.path.basename(urllib.parse.urlparse(image_url).path)
-                if not filename or '.' not in filename:
-                    filename = f"property_{hashlib.md5(image_url.encode()).hexdigest()[:12]}.jpg"
-                date_dir = datetime.now().strftime('%Y/%m/%d')
-                object_key = f"property-images/{date_dir}/{filename}"
+                # 从Content-Type推断扩展名
+                content_type = last_resp.headers.get('Content-Type', 'image/jpeg') if last_resp else 'image/jpeg'
+                ext = '.jpg'
+                if 'png' in content_type:
+                    ext = '.png'
+                elif 'webp' in content_type:
+                    ext = '.webp'
+                elif 'jpeg' in content_type or 'jpg' in content_type:
+                    ext = '.jpg'
+                object_key = self._stable_key_from_bytes(image_data, ext, key_prefix)
+
+            # 存在性检查
+            if self._object_exists(object_key):
+                return self._get_image_url(object_key)
             
             # 使用SDK上传
             print(f"[COS] 正在上传到: {object_key}")
@@ -217,11 +292,7 @@ class SimpleCOSUploader:
             )
             
             # 返回图片URL
-            if self.domain:
-                result_url = f"https://{self.domain}/{object_key}"
-            else:
-                result_url = f"https://{self.bucket}.cos.{self.region}.myqcloud.com/{object_key}"
-            
+            result_url = self._get_image_url(object_key)
             print(f"[COS] 上传成功: {result_url}")
             return result_url
                 
@@ -231,28 +302,53 @@ class SimpleCOSUploader:
             traceback.print_exc()
             return None
     
-    def _upload_with_requests(self, image_url: str, object_key: Optional[str] = None) -> Optional[str]:
+    def _upload_with_requests(self, image_url: str, object_key: Optional[str] = None, key_prefix: str = "property-images", referer: Optional[str] = None) -> Optional[str]:
         """使用requests上传（备用方案）"""
         try:
-            # 下载图片
-            response = requests.get(image_url, timeout=30)
-            response.raise_for_status()
-            image_data = response.content
+            # 下载图片（带UA与Referer，重试）
+            image_url = self._normalize_image_url(image_url)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+                'Referer': referer or 'https://www.zoopla.co.uk/'
+            }
+            image_data = None
+            last_resp = None
+            for _ in range(3):
+                try:
+                    response = requests.get(image_url, headers=headers, timeout=20)
+                    last_resp = response
+                    if response.status_code == 200:
+                        image_data = response.content
+                        break
+                except Exception:
+                    time.sleep(0.3)
+            if image_data is None:
+                status = getattr(last_resp, 'status_code', 'NA')
+                print(f"[COS] 下载失败 status={status} url={image_url} referer={headers.get('Referer')} 跳过")
+                return None
             
-            # 生成对象key
+            # 生成稳定对象key
             if not object_key:
-                filename = os.path.basename(urllib.parse.urlparse(image_url).path)
-                if not filename or '.' not in filename:
-                    filename = f"property_{hashlib.md5(image_url.encode()).hexdigest()[:12]}.jpg"
-                date_dir = datetime.now().strftime('%Y/%m/%d')
-                object_key = f"property-images/{date_dir}/{filename}"
+                content_type = last_resp.headers.get('Content-Type', 'image/jpeg') if last_resp else 'image/jpeg'
+                ext = '.jpg'
+                if 'png' in content_type:
+                    ext = '.png'
+                elif 'webp' in content_type:
+                    ext = '.webp'
+                elif 'jpeg' in content_type or 'jpg' in content_type:
+                    ext = '.jpg'
+                object_key = self._stable_key_from_bytes(image_data, ext, key_prefix)
+
+            # 存在性检查
+            if self._object_exists(object_key):
+                return self._get_image_url(object_key)
             
-            # 简单的PUT请求上传
-            url = f"https://{self.bucket}.cos.{self.region}.myqcloud.com/{object_key}"
-            put_response = requests.put(url, data=image_data)
+            # 简单的PUT请求上传（使用默认COS域名进行上传，但返回URL通过_get_image_url生成）
+            upload_url = f"https://{self.bucket}.cos.{self.region}.myqcloud.com/{object_key}"
+            put_response = requests.put(upload_url, data=image_data)
             
             if put_response.status_code in [200, 201]:
-                result_url = f"https://{self.bucket}.cos.{self.region}.myqcloud.com/{object_key}"
+                result_url = self._get_image_url(object_key)
                 print(f"[COS] 上传成功: {result_url}")
                 return result_url
             else:
