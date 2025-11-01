@@ -2,25 +2,56 @@
 <view class="container">
   <!-- Logo Header -->
   <view class="logo-header">
-    <view class="uk-icon">
-      <view class="icon-bg">🏛️</view>
+    <view class="header-content">
+      <view class="uk-icon">
+        <view class="icon-bg">👑</view>
+      </view>
+      <view class="logo-text">
+        <view class="logo-title">UK Property</view>
+        <view class="logo-subtitle">AI智能房产搜索</view>
+      </view>
     </view>
-    <view class="logo-text">
-      <view class="logo-title">UK Property</view>
-      <view class="logo-subtitle">英国优质房产服务</view>
+    <view class="ai-badge">
+      <text class="ai-badge-text">AI Powered</text>
     </view>
   </view>
   
-  <!-- AI对话搜索栏 -->
-  <view class="search-bar">
-    <input class="search-input" placeholder="例如：帝国理工大学附近2室一厅公寓4000镑以下" bindinput="onSearchInput" value="{{searchKeyword}}" />
-    <button class="search-btn" bindtap="onAISearch">AI搜索</button>
-  </view>
-  
-  <!-- AI解析结果提示 -->
-  <view class="ai-filter-tip" wx:if="{{aiFilters && aiFilters.query}}">
-    <text class="tip-icon">🤖</text>
-    <text class="tip-text">已为您筛选：{{aiFiltersText}}</text>
+  <!-- AI对话搜索栏 - 突出显示 -->
+  <view class="ai-search-section">
+    <view class="ai-search-header">
+      <view class="ai-icon-wrapper">
+        <text class="ai-icon">🤖</text>
+        <view class="ai-glow"></view>
+      </view>
+      <view class="ai-search-title">
+        <text class="ai-title-main">AI智能搜索</text>
+        <text class="ai-title-sub">用自然语言描述您想要的房产</text>
+      </view>
+    </view>
+    
+    <view class="search-bar">
+      <view class="search-input-wrapper">
+        <text class="search-icon">🔍</text>
+        <input class="search-input" placeholder="例如：帝国理工大学附近2室一厅公寓4000镑以下" bindinput="onSearchInput" value="{{searchKeyword}}" />
+      </view>
+      <button class="ai-search-btn" bindtap="onAISearch">
+        <text class="btn-text">AI搜索</text>
+        <text class="btn-icon">⚡</text>
+      </button>
+    </view>
+    
+    <!-- AI解析结果提示 -->
+    <view class="ai-filter-tip" wx:if="{{aiFilters && aiFilters.query}}">
+      <view class="tip-content">
+        <view class="tip-icon-wrapper">
+          <text class="tip-icon">✨</text>
+        </view>
+        <view class="tip-text-wrapper">
+          <text class="tip-label">AI已为您解析</text>
+          <text class="tip-text">{{aiFiltersText}}</text>
+        </view>
+      </view>
+    </view>
   </view>
 
   <!-- 筛选栏 -->
