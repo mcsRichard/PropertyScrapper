@@ -19,3 +19,18 @@ COS_SECRET_KEY=your-cos-secret-key
 COS_REGION=ap-shanghai
 COS_BUCKET=your-bucket-name
 COS_DOMAIN=https://your-domain.com  # 可选：自定义CDN域名
+
+# AI搜索功能配置（默认使用DeepSeek，国内更稳定）
+AI_API_TYPE=deepseek  # 'deepseek' 或 'openai'，默认使用deepseek
+
+# DeepSeek API配置（推荐，国内用户更稳定，价格更低）
+DEEPSEEK_API_KEY=your-deepseek-api-key-here  # 必填：DeepSeek API密钥，访问 https://platform.deepseek.com/ 获取
+DEEPSEEK_API_BASE=https://api.deepseek.com  # 默认值，一般不需要修改
+DEEPSEEK_MODEL=deepseek-chat  # 默认值，一般不需要修改
+
+# OpenAI API配置（可选，如果想使用OpenAI）
+OPENAI_API_KEY=your-openai-api-key-here  # 可选：OpenAI API密钥
+OPENAI_API_BASE=https://api.openai.com/v1  # 默认值
+OPENAI_MODEL=gpt-4o-mini  # 默认值
+
+# 注意：如果未配置任何API密钥，将使用正则表达式作为备用方案（准确度较低）

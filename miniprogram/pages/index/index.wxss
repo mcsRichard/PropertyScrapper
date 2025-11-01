@@ -80,6 +80,28 @@
   box-shadow: 0 4rpx 10rpx rgba(200, 16, 46, 0.3);
 }
 
+/* AI筛选提示 */
+.ai-filter-tip {
+  display: flex;
+  align-items: center;
+  padding: 15rpx 20rpx;
+  background: linear-gradient(135deg, #E8F4F8 0%, #F0F9FF 100%);
+  border-left: 4rpx solid #C8102E;
+  margin: 0 20rpx 10rpx;
+  border-radius: 8rpx;
+}
+
+.tip-icon {
+  font-size: 32rpx;
+  margin-right: 10rpx;
+}
+
+.tip-text {
+  font-size: 26rpx;
+  color: #333;
+  flex: 1;
+}
+
 .filter-bar {
   display: flex;
   padding: 20rpx;

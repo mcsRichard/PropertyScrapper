@@ -17,6 +17,9 @@ Page({
       bedrooms: ''
     },
     listingType: 'for_rent', // 默认显示出租房产
+    searchKeyword: '', // 搜索关键词
+    aiFilters: null, // AI解析的筛选条件
+    aiFiltersText: '', // AI筛选条件显示文本
     // 筛选选项
     bedroomOptions: [
       { label: '全部', value: '' },
@@ -222,7 +225,10 @@ Page({
       priceDisplay: '价格',
       pricePresetSelected: -1,
       page: 1,
-      hasMore: true
+      hasMore: true,
+      searchKeyword: '',
+      aiFilters: null,
+      aiFiltersText: ''
     })
     this.loadProperties(true)
   },
@@ -238,7 +244,7 @@ Page({
   },
 
   /**
-   * 执行搜索
+   * 执行搜索（传统搜索，保留兼容性）
    */
   onSearch() {
     if (!this.data.searchKeyword) {
@@ -252,7 +258,9 @@ Page({
     this.setData({
       properties: [],
       page: 1,
-      hasMore: true
+      hasMore: true,
+      aiFilters: null,
+      aiFiltersText: ''
     })
 
     api.searchProperties(this.data.searchKeyword, this.data.page, this.data.limit)
@@ -272,6 +280,134 @@ Page({
           icon: 'none'
         })
       })
+  },
+
+  /**
+   * AI对话式搜索
+   */
+  onAISearch() {
+    if (!this.data.searchKeyword) {
+      wx.showToast({
+        title: '请输入搜索条件',
+        icon: 'none'
+      })
+      return
+    }
+
+    wx.showLoading({
+      title: 'AI解析中...',
+      mask: true
+    })
+
+    this.setData({
+      properties: [],
+      page: 1,
+      hasMore: true,
+      loading: true
+    })
+
+    api.aiSearchProperties(this.data.searchKeyword, this.data.listingType, this.data.page, this.data.limit)
+      .then(res => {
+        wx.hideLoading()
+        if (res.success && res.data) {
+          const filters = res.data.filters || {}
+          const filtersText = this.formatAIFilters(filters)
+          
+          this.setData({
+            properties: res.data.properties,
+            total: res.data.pagination.total,
+            hasMore: res.data.pagination.page < res.data.pagination.pages,
+            aiFilters: filters,
+            aiFiltersText: filtersText,
+            loading: false
+          })
+
+          // 同步更新筛选状态，方便用户查看和调整
+          // 注意：AI返回的是snake_case，需要转换为camelCase
+          const newFilters = {
+            minPrice: filters.min_price || '',
+            maxPrice: filters.max_price || '',
+            propertyType: filters.property_type || '',
+            bedrooms: filters.bedrooms || ''
+          }
+          this.setData({
+            filters: newFilters,
+            listingType: filters.listing_type || this.data.listingType
+          })
+          
+          // 如果listing_type改变了，更新价格预设
+          if (filters.listing_type && filters.listing_type !== this.data.listingType) {
+            this.updatePricePresets()
+          }
+        }
+      })
+      .catch(err => {
+        wx.hideLoading()
+        console.error('AI搜索失败:', err)
+        wx.showToast({
+          title: 'AI搜索失败，请重试',
+          icon: 'none',
+          duration: 2000
+        })
+        this.setData({ loading: false })
+      })
+  },
+
+  /**
+   * 格式化AI筛选条件显示文本
+   */
+  formatAIFilters(filters) {
+    const parts = []
+    
+    if (filters.listing_type) {
+      parts.push(filters.listing_type === 'for_sale' ? '出售' : '出租')
+    }
+    
+    if (filters.location) {
+      parts.push(filters.location + '附近')
+    }
+    
+    if (filters.bedrooms) {
+      parts.push(filters.bedrooms + '室')
+    }
+    
+    if (filters.property_type) {
+      const typeMap = {
+        'flat': '公寓',
+        'house': '别墅',
+        'studio': '单间',
+        'other': '其他'
+      }
+      parts.push(typeMap[filters.property_type] || filters.property_type)
+    }
+    
+    if (filters.min_price || filters.max_price) {
+      let priceText = ''
+      if (filters.min_price && filters.max_price) {
+        if (filters.listing_type === 'for_sale') {
+          priceText = `£${(filters.min_price / 1000000).toFixed(1)}万-£${(filters.max_price / 1000000).toFixed(1)}万`
+        } else {
+          priceText = `£${filters.min_price}-£${filters.max_price}/月`
+        }
+      } else if (filters.max_price) {
+        if (filters.listing_type === 'for_sale') {
+          priceText = `£${(filters.max_price / 1000000).toFixed(1)}万以下`
+        } else {
+          priceText = `£${filters.max_price}/月以下`
+        }
+      } else if (filters.min_price) {
+        if (filters.listing_type === 'for_sale') {
+          priceText = `£${(filters.min_price / 1000000).toFixed(1)}万以上`
+        } else {
+          priceText = `£${filters.min_price}/月以上`
+        }
+      }
+      if (priceText) {
+        parts.push(priceText)
+      }
+    }
+    
+    return parts.length > 0 ? parts.join(' · ') : '全部'
   },
 
   /**

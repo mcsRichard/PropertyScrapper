@@ -31,3 +31,16 @@ class Config:
     COS_REGION = os.getenv('COS_REGION', 'ap-shanghai')
     COS_BUCKET = os.getenv('COS_BUCKET', 'your-bucket-name')
     COS_DOMAIN = os.getenv('COS_DOMAIN', '')  # 可选：自定义域名
+    
+    # AI搜索功能配置（默认使用DeepSeek，国内更稳定）
+    AI_API_TYPE = os.getenv('AI_API_TYPE', 'deepseek')  # 'deepseek' 或 'openai'
+    
+    # DeepSeek API配置（推荐，国内用户更稳定）
+    DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')  # DeepSeek API密钥
+    DEEPSEEK_API_BASE = os.getenv('DEEPSEEK_API_BASE', 'https://api.deepseek.com')  # DeepSeek API地址
+    DEEPSEEK_MODEL = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat')  # DeepSeek模型名称
+    
+    # OpenAI API配置（可选，如果使用OpenAI）
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')  # OpenAI API密钥
+    OPENAI_API_BASE = os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')  # OpenAI API地址
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')  # OpenAI模型名称

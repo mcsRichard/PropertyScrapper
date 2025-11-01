@@ -66,10 +66,19 @@ class PropertyService:
         if bedrooms:
             query = query.filter(Property.bedrooms == bedrooms)
         if location:
-            query = query.filter(or_(
-                Property.location.ilike(f"%{location}%"),
-                Property.postcode.ilike(f"%{location}%")
-            ))
+            # 如果location是邮编前缀列表（逗号分隔），分别搜索每个前缀
+            if ',' in location:
+                postcode_prefixes = [p.strip() for p in location.split(',')]
+                postcode_conditions = [Property.postcode.ilike(f"{prefix}%") for prefix in postcode_prefixes]
+                query = query.filter(or_(
+                    Property.location.ilike(f"%{location.split(',')[0]}%"),  # 保留地名搜索
+                    *postcode_conditions
+                ))
+            else:
+                query = query.filter(or_(
+                    Property.location.ilike(f"%{location}%"),
+                    Property.postcode.ilike(f"%{location}%")
+                ))
         if listing_type:
             query = query.filter(Property.listing_type == listing_type)
         

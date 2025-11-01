@@ -11,10 +11,16 @@
     </view>
   </view>
   
-  <!-- 搜索栏 -->
+  <!-- AI对话搜索栏 -->
   <view class="search-bar">
-    <input class="search-input" placeholder="搜索房产..." bindinput="onSearchInput" value="{{searchKeyword}}" />
-    <button class="search-btn" bindtap="onSearch">搜索</button>
+    <input class="search-input" placeholder="例如：帝国理工大学附近2室一厅公寓4000镑以下" bindinput="onSearchInput" value="{{searchKeyword}}" />
+    <button class="search-btn" bindtap="onAISearch">AI搜索</button>
+  </view>
+  
+  <!-- AI解析结果提示 -->
+  <view class="ai-filter-tip" wx:if="{{aiFilters && aiFilters.query}}">
+    <text class="tip-icon">🤖</text>
+    <text class="tip-text">已为您筛选：{{aiFiltersText}}</text>
   </view>
 
   <!-- 筛选栏 -->

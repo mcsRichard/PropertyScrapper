@@ -75,8 +75,23 @@ function searchProperties(keyword, page = 1, limit = 20) {
   return request(`/api/properties/search?keyword=${keyword}&page=${page}&limit=${limit}`)
 }
 
+/**
+ * AI对话式搜索房产
+ * @param {string} query - 自然语言查询，例如："帝国理工大学附近2室一厅公寓4000镑以下"
+ * @param {string} listingType - 默认listing_type，'for_sale'或'for_rent'
+ * @param {number} page - 页码
+ * @param {number} limit - 每页数量
+ */
+function aiSearchProperties(query, listingType = 'for_rent', page = 1, limit = 20) {
+  return request('/api/properties/ai-search?page=' + page + '&limit=' + limit, 'POST', {
+    query: query,
+    listing_type: listingType
+  })
+}
+
 module.exports = {
   getProperties,
   getPropertyDetail,
-  searchProperties
+  searchProperties,
+  aiSearchProperties
 }

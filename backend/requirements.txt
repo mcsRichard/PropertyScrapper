@@ -9,3 +9,4 @@ beautifulsoup4==4.12.3
 cryptography==42.0.5
 Pillow==10.1.0
 cos-python-sdk-v5==1.9.25
+openai==1.12.0

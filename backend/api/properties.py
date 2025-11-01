@@ -4,9 +4,14 @@ from flask import Blueprint, request, jsonify
 from sqlalchemy.orm import Session
 from models.database import get_db
 from utils.database import PropertyService
+from utils.ai_parser import AISearchParser
+from utils.location_mapper import LocationMapper
+from config import Config
 from typing import Dict, Any
 import sys
 import io
+import logging
+import traceback
 
 # 设置标准输出编码为UTF-8
 if sys.platform == 'win32':
@@ -228,4 +233,181 @@ def get_filter_options():
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+@properties_bp.route('/ai-search', methods=['POST'])
+def ai_search_properties():
+    """AI对话式搜索房产"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '').strip()
+        default_listing_type = data.get('listing_type', 'for_rent')  # 默认出租
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        
+        # ========== 调试信息：记录输入参数 ==========
+        print("=" * 60)
+        print("[AI-SEARCH] 收到搜索请求")
+        print(f"[AI-SEARCH] 原始查询: {query}")
+        print(f"[AI-SEARCH] 默认listing_type: {default_listing_type}")
+        print(f"[AI-SEARCH] 分页参数: page={page}, limit={limit}")
+        print("=" * 60)
+        
+        if not query:
+            print("[AI-SEARCH] 错误: 查询为空")
+            return jsonify({
+                'success': False,
+                'error': 'Query is required'
+            }), 400
+        
+        # 限制每页最大数量
+        limit = min(limit, 100)
+        
+        # 使用AI解析器解析查询
+        print("[AI-SEARCH] 开始AI解析查询...")
+        parser = AISearchParser()
+        filters = parser.parse_query(query, default_listing_type)
+        
+        # ========== 调试信息：显示AI解析结果 ==========
+        print("[AI-SEARCH] AI解析结果:")
+        print(f"  - listing_type: {filters.get('listing_type')}")
+        print(f"  - bedrooms: {filters.get('bedrooms')}")
+        print(f"  - property_type: {filters.get('property_type')}")
+        print(f"  - min_price: {filters.get('min_price')}")
+        print(f"  - max_price: {filters.get('max_price')}")
+        print(f"  - location (原始): {filters.get('location')}")
+        
+        # 处理location：将地名转换为邮编（支持动态API查询）
+        original_location = filters.get('location')
+        if original_location:
+            print(f"[AI-SEARCH] 尝试将地名转换为邮编: {original_location}")
+            # 首先检查是否是邮编格式，如果是则直接使用
+            if LocationMapper.is_postcode_prefix(original_location.replace(',', '').strip().split(',')[0]):
+                print(f"[AI-SEARCH] 检测到邮编格式，直接使用: {original_location}")
+            else:
+                # 使用动态API查询，如果失败会自动降级到静态字典或原始location
+                mapped_location = LocationMapper.location_to_search_term(original_location, use_api=True)
+                
+                if mapped_location != original_location:
+                    print(f"[AI-SEARCH] 地名映射成功: {original_location} -> {mapped_location}")
+                    filters['location'] = mapped_location
+                    filters['original_location'] = original_location  # 保留原始地名用于显示
+                else:
+                    print(f"[AI-SEARCH] 未找到邮编映射，使用原始location进行搜索: {original_location}")
+        
+        print(f"  - location (最终): {filters.get('location')}")
+        print("-" * 60)
+        
+        # 获取数据库会话
+        db: Session = next(get_db())
+        property_service = PropertyService(db)
+        
+        # ========== 调试信息：显示数据库查询参数 ==========
+        print("[AI-SEARCH] 执行数据库查询，参数:")
+        print(f"  - page: {page}, limit: {limit}")
+        print(f"  - min_price: {filters.get('min_price')}")
+        print(f"  - max_price: {filters.get('max_price')}")
+        print(f"  - property_type: {filters.get('property_type')}")
+        print(f"  - bedrooms: {filters.get('bedrooms')}")
+        print(f"  - location: {filters.get('location')}")
+        print(f"  - listing_type: {filters.get('listing_type')}")
+        
+        # 使用解析出的筛选条件获取房产列表
+        result = property_service.get_properties(
+            page=page,
+            limit=limit,
+            min_price=filters.get('min_price'),
+            max_price=filters.get('max_price'),
+            property_type=filters.get('property_type'),
+            bedrooms=filters.get('bedrooms'),
+            location=filters.get('location'),
+            listing_type=filters.get('listing_type')
+        )
+        
+        # ========== 调试信息：显示查询结果 ==========
+        print("[AI-SEARCH] 数据库查询结果:")
+        print(f"  - 找到房产数量: {result['total']}")
+        print(f"  - 当前页: {result['page']}/{result['pages']}")
+        print(f"  - 本页返回: {len(result['properties'])} 条")
+        
+        if result['total'] == 0:
+            print("[AI-SEARCH] ⚠️ 警告: 未找到匹配的房产，可能的原因:")
+            print("  1. 筛选条件过于严格")
+            print("  2. 数据库中确实没有符合条件的房产")
+            print("  3. location/邮编映射可能不准确")
+            # 显示实际使用的筛选条件
+            print("[AI-SEARCH] 实际使用的筛选条件:")
+            active_filters = {k: v for k, v in filters.items() if v is not None}
+            for key, value in active_filters.items():
+                print(f"    {key}: {value}")
+        else:
+            print("[AI-SEARCH] ✅ 成功找到房产")
+        
+        print("=" * 60)
+        
+        # 转换为字典格式
+        properties_data = []
+        for prop in result['properties']:
+            properties_data.append({
+                'id': prop.id,
+                'title': prop.title,
+                'price': prop.price,
+                'price_numeric': prop.price_numeric,
+                'area': prop.area,
+                'bedrooms': prop.bedrooms,
+                'bathrooms': prop.bathrooms,
+                'property_type': prop.property_type,
+                'listing_type': prop.listing_type,
+                'location': prop.location,
+                'postcode': prop.postcode,
+                'description': prop.description,
+                'description_chinese': prop.description_chinese,
+                'url': prop.url,
+                'image_url': prop.image_url,
+                'created_at': prop.created_at.isoformat() if prop.created_at else None,
+                'updated_at': prop.updated_at.isoformat() if prop.updated_at else None
+            })
+        
+        # 准备返回的filters（用于前端显示）
+        display_filters = filters.copy()
+        # 如果location被映射了，返回时使用原始location以便显示
+        if 'original_location' in filters:
+            display_filters['location'] = filters['original_location']
+            display_filters['postcode_prefixes'] = filters['location']  # 保留邮编前缀供调试
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'properties': properties_data,
+                'pagination': {
+                    'page': result['page'],
+                    'limit': result['limit'],
+                    'total': result['total'],
+                    'pages': result['pages']
+                },
+                'filters': display_filters,  # 返回解析出的筛选条件，供前端显示
+                'query': query,  # 返回原始查询
+                'debug_info': {  # 调试信息（可选，可在生产环境移除）
+                    'total_found': result['total'],
+                    'search_location': filters.get('location'),
+                    'original_location': filters.get('original_location'),
+                    'all_filters': filters
+                }
+            }
+        })
+        
+    except Exception as e:
+        print("[AI-SEARCH] ❌ 发生错误:")
+        print(f"[AI-SEARCH] 错误类型: {type(e).__name__}")
+        print(f"[AI-SEARCH] 错误信息: {str(e)}")
+        print("[AI-SEARCH] 错误堆栈:")
+        traceback.print_exc()
+        print("=" * 60)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'debug_info': {
+                'error_type': type(e).__name__,
+                'traceback': traceback.format_exc() if Config.DEBUG else None
+            }
         }), 500
