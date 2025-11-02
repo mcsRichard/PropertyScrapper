@@ -306,21 +306,50 @@ Page({
       loading: true
     })
 
-    api.aiSearchProperties(this.data.searchKeyword, this.data.listingType, this.data.page, this.data.limit)
-      .then(res => {
-        wx.hideLoading()
-        if (res.success && res.data) {
-          const filters = res.data.filters || {}
-          const filtersText = this.formatAIFilters(filters)
-          
-          this.setData({
-            properties: res.data.properties,
-            total: res.data.pagination.total,
-            hasMore: res.data.pagination.page < res.data.pagination.pages,
-            aiFilters: filters,
-            aiFiltersText: filtersText,
-            loading: false
-          })
+              api.aiSearchProperties(this.data.searchKeyword, this.data.listingType, this.data.page, this.data.limit)
+                .then(res => {
+                  wx.hideLoading()
+                  
+                  // 输出调试信息到控制台
+                  if (res.data && res.data.debug_info) {
+                    console.log('[AI-SEARCH] 调试信息:', res.data.debug_info)
+                    console.log('[AI-SEARCH] Location类型:', res.data.debug_info.location_type)
+                    console.log('[AI-SEARCH] 搜索Location:', res.data.debug_info.search_location)
+                    console.log('[AI-SEARCH] SQL提示:', res.data.debug_info.sql_hint)
+                    console.log('[AI-SEARCH] 找到房产数:', res.data.debug_info.total_found)
+                    
+                    // 如果没有找到结果，显示更详细的提示
+                    if (res.data.debug_info.total_found === 0) {
+                      console.warn('[AI-SEARCH] ⚠️ 未找到房产')
+                      console.warn('  - 查询参数:', res.data.debug_info.query_params)
+                      console.warn('  - 所有筛选条件:', res.data.debug_info.all_filters)
+                      if (res.data.debug_info.sql_hint) {
+                        console.warn('  - SQL查询:', res.data.debug_info.sql_hint)
+                      }
+                      
+                      // 显示诊断信息
+                      if (res.data.debug_info.diagnosis && Object.keys(res.data.debug_info.diagnosis).length > 0) {
+                        console.warn('  - 📊 数据库诊断信息:')
+                        console.warn(`     - N10房产总数（不限类型）: ${res.data.debug_info.diagnosis.location_count_all_types}`)
+                        console.warn(`     - ${res.data.debug_info.query_params.listing_type}房产总数（不限location）: ${res.data.debug_info.diagnosis.listing_type_count_all_locations}`)
+                        console.warn(`     - 同时满足两个条件的: ${res.data.debug_info.diagnosis.combined_count}`)
+                        console.warn(`     - 💡 建议: ${res.data.debug_info.diagnosis.suggestion}`)
+                      }
+                    }
+                  }
+                  
+                  if (res.success && res.data) {
+                    const filters = res.data.filters || {}
+                    const filtersText = this.formatAIFilters(filters)
+                    
+                    this.setData({
+                      properties: res.data.properties,
+                      total: res.data.pagination.total,
+                      hasMore: res.data.pagination.page < res.data.pagination.pages,
+                      aiFilters: filters,
+                      aiFiltersText: filtersText,
+                      loading: false
+                    })
 
           // 同步更新筛选状态，方便用户查看和调整
           // 注意：AI返回的是snake_case，需要转换为camelCase

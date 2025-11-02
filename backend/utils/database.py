@@ -66,18 +66,31 @@ class PropertyService:
         if bedrooms:
             query = query.filter(Property.bedrooms == bedrooms)
         if location:
+            # 检查是否是邮编格式
+            from backend.utils.location_mapper import LocationMapper
+            is_postcode = LocationMapper.is_postcode_prefix(location)
+            
             # 如果location是邮编前缀列表（逗号分隔），分别搜索每个前缀
             if ',' in location:
-                postcode_prefixes = [p.strip() for p in location.split(',')]
+                postcode_prefixes = [p.strip().upper() for p in location.split(',')]
                 postcode_conditions = [Property.postcode.ilike(f"{prefix}%") for prefix in postcode_prefixes]
                 query = query.filter(or_(
                     Property.location.ilike(f"%{location.split(',')[0]}%"),  # 保留地名搜索
                     *postcode_conditions
                 ))
+            elif is_postcode:
+                # 邮编格式：使用前缀匹配（更精确）
+                location_upper = location.upper().strip()
+                print(f"[DATABASE] 邮编格式搜索: {location_upper}")
+                query = query.filter(
+                    Property.postcode.ilike(f"{location_upper}%")  # 前缀匹配，如"N10"匹配"N10 1AB"
+                )
             else:
+                # 地名格式：同时搜索location和postcode字段（模糊匹配）
+                print(f"[DATABASE] 地名格式搜索: {location}")
                 query = query.filter(or_(
-                    Property.location.ilike(f"%{location}%"),
-                    Property.postcode.ilike(f"%{location}%")
+                    Property.location.ilike(f"%{location}%"),  # 搜索location字段（地名）
+                    Property.postcode.ilike(f"%{location}%")   # 搜索postcode字段（可能包含地名的邮编）
                 ))
         if listing_type:
             query = query.filter(Property.listing_type == listing_type)

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 英国地名到邮编映射工具
-支持动态查询（使用Nominatim API）和静态字典两种方式
+完全使用Nominatim API动态查询，支持全英国任何地区
 """
 from typing import List, Optional, Dict
 import requests
@@ -26,76 +26,7 @@ class LocationMapper:
     _memory_cache: Dict[str, Optional[List[str]]] = {}
     _last_request_time = 0
     
-    # 常见英国大学和地标及其邮编映射（静态备用方案）
-    # 格式: {地名: [邮编列表或邮编前缀列表]}
-    LOCATION_TO_POSTCODE: Dict[str, List[str]] = {
-        # 伦敦地区的大学
-        '帝国理工大学': ['SW7', 'SW3'],  # Imperial College London
-        'imperial college': ['SW7', 'SW3'],
-        'imperial college london': ['SW7', 'SW3'],
-        'ic': ['SW7', 'SW3'],
-        
-        '伦敦大学学院': ['WC1', 'WC2'],  # UCL
-        'ucl': ['WC1', 'WC2'],
-        'university college london': ['WC1', 'WC2'],
-        
-        '伦敦政治经济学院': ['WC2'],  # LSE
-        'lse': ['WC2'],
-        'london school of economics': ['WC2'],
-        
-        '伦敦国王学院': ['WC2', 'SE1'],  # KCL
-        'kcl': ['WC2', 'SE1'],
-        'king\'s college london': ['WC2', 'SE1'],
-        'kings college london': ['WC2', 'SE1'],
-        
-        '伦敦大学': ['WC1', 'WC2', 'SE1'],  # 通用
-        'london university': ['WC1', 'WC2', 'SE1'],
-        
-        # 其他城市的大学
-        '牛津大学': ['OX1', 'OX2', 'OX3', 'OX4'],  # Oxford University
-        'oxford': ['OX1', 'OX2', 'OX3', 'OX4'],
-        'oxford university': ['OX1', 'OX2', 'OX3', 'OX4'],
-        
-        '剑桥大学': ['CB1', 'CB2', 'CB3'],  # Cambridge University
-        'cambridge': ['CB1', 'CB2', 'CB3'],
-        'cambridge university': ['CB1', 'CB2', 'CB3'],
-        
-        '曼彻斯特大学': ['M1', 'M13', 'M14'],  # University of Manchester
-        'manchester university': ['M1', 'M13', 'M14'],
-        'university of manchester': ['M1', 'M13', 'M14'],
-        'manchester': ['M1', 'M13', 'M14'],
-        
-        '伯明翰大学': ['B15', 'B29'],  # University of Birmingham
-        'birmingham university': ['B15', 'B29'],
-        'university of birmingham': ['B15', 'B29'],
-        'birmingham': ['B15', 'B29'],
-        
-        '爱丁堡大学': ['EH8', 'EH9'],  # University of Edinburgh
-        'edinburgh university': ['EH8', 'EH9'],
-        'university of edinburgh': ['EH8', 'EH9'],
-        'edinburgh': ['EH8', 'EH9'],
-        
-        # 伦敦地区（通用）
-        '伦敦': ['SW', 'SE', 'NW', 'NE', 'E', 'W', 'N', 'WC', 'EC'],
-        'london': ['SW', 'SE', 'NW', 'NE', 'E', 'W', 'N', 'WC', 'EC'],
-        
-        # 伦敦市中心
-        '伦敦市中心': ['WC1', 'WC2', 'EC1', 'EC2', 'EC3', 'EC4'],
-        'central london': ['WC1', 'WC2', 'EC1', 'EC2', 'EC3', 'EC4'],
-        
-        # 伦敦各区（部分主要区域）
-        '肯辛顿': ['SW7', 'SW5', 'W8'],
-        'kensington': ['SW7', 'SW5', 'W8'],
-        
-        '切尔西': ['SW3', 'SW10'],
-        'chelsea': ['SW3', 'SW10'],
-        
-        '威斯敏斯特': ['SW1', 'W1'],
-        'westminster': ['SW1', 'W1'],
-        
-        '伊斯灵顿': ['N1', 'N7'],
-        'islington': ['N1', 'N7'],
-    }
+    # 注意：已完全移除静态字典，所有地名都通过Nominatim API动态查询
     
     @classmethod
     def _get_postcode_from_nominatim(cls, location: str) -> Optional[List[str]]:
@@ -217,7 +148,7 @@ class LocationMapper:
     def get_postcodes(cls, location: str, use_api: bool = True) -> Optional[List[str]]:
         """
         根据地名获取对应的邮编列表
-        优先使用静态字典，如果未找到且启用API，则使用Nominatim API查询
+        使用Nominatim API动态查询
         
         Args:
             location: 地名（如"帝国理工大学"）
@@ -229,31 +160,18 @@ class LocationMapper:
         if not location:
             return None
         
-        location_lower = location.lower().strip()
+        # 如果禁用API，直接返回None
+        if not use_api:
+            return None
         
-        # 首先尝试静态字典
-        # 直接匹配
-        if location_lower in cls.LOCATION_TO_POSTCODE:
-            print(f"[LOCATION-MAPPER] 从静态字典获取: {location} -> {cls.LOCATION_TO_POSTCODE[location_lower]}")
-            return cls.LOCATION_TO_POSTCODE[location_lower]
-        
-        # 模糊匹配（包含关系）
-        for key, postcodes in cls.LOCATION_TO_POSTCODE.items():
-            if key in location_lower or location_lower in key:
-                print(f"[LOCATION-MAPPER] 从静态字典（模糊匹配）获取: {location} -> {postcodes}")
-                return postcodes
-        
-        # 静态字典未找到，尝试API查询
-        if use_api:
-            return cls._get_postcode_from_nominatim(location)
-        
-        return None
+        # 直接使用API查询
+        return cls._get_postcode_from_nominatim(location)
     
     @classmethod
     def location_to_search_term(cls, location: str, use_api: bool = True) -> str:
         """
         将地名转换为搜索词
-        如果找到对应的邮编，返回邮编前缀列表（用逗号分隔）
+        使用API查询邮编，如果找到则返回邮编前缀列表（用逗号分隔）
         否则返回原location
         
         Args:
@@ -266,6 +184,11 @@ class LocationMapper:
         if not location:
             return location
         
+        # 如果是邮编格式，直接返回
+        if cls.is_postcode_prefix(location):
+            return location
+        
+        # 使用API查询
         postcodes = cls.get_postcodes(location, use_api=use_api)
         
         if postcodes:
@@ -289,8 +212,22 @@ class LocationMapper:
         if not term:
             return False
         
-        # 英国邮编前缀格式通常是：字母+数字，如 SW7, WC1, M1, OX1 等
+        term = term.strip().upper()
+        
+        # 英国邮编前缀格式：
+        # - 1-2个字母 + 1-2个数字，如: N10, SW7, WC1, M1, OX1, E14 等
+        # - 或者纯字母（较少见），如: SW, SE, N, E, W 等
         import re
-        pattern = r'^[A-Z]{1,2}\d{1,2}$'
-        return bool(re.match(pattern, term.upper()))
+        
+        # 标准格式：1-2字母 + 1-2数字（如 N10, SW7, E14）
+        pattern1 = r'^[A-Z]{1,2}\d{1,2}$'
+        if re.match(pattern1, term):
+            return True
+        
+        # 纯字母格式：1-2个字母（如 N, SW, SE）
+        pattern2 = r'^[A-Z]{1,2}$'
+        if re.match(pattern2, term):
+            return True
+        
+        return False
 

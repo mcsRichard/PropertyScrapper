@@ -78,15 +78,24 @@ class AISearchParser:
 - property_type: "flat"（公寓）、"house"（别墅）、"studio"（单间）、"other"（其他）
 - max_price: 最高价格（整数，英镑）
 - min_price: 最低价格（整数，英镑）
-- location: 位置关键词（字符串，如"帝国理工大学"、"伦敦"等）
+- location: 位置关键词（字符串，可以是地名如"帝国理工大学"、"伦敦"，也可以是英国邮编如"N10"、"SW7"、"WC1"等）
 
 用户查询：{query}
 
 请分析查询内容，提取出相应的筛选条件。如果查询中没有明确提到某个条件，则不要包含该字段。
-对于位置信息，如果提到"附近"、"周边"等，保留地点名称作为location参数。
+对于位置信息：
+- 如果提到"附近"、"周边"等，保留地点名称作为location参数
+- 常见地点包括：帝国理工大学（Imperial College London）、帝国理工、帝国大学、伦敦大学（UCL/LSE/KCL）、牛津、剑桥等
+- 如果输入的是英国邮编格式（如"N10"、"SW7"、"WC1"等），直接作为location参数
+- 邮编格式通常是：1-2个字母+1-2个数字，或纯字母（如"N10"、"SW7"、"N"、"SW"等）
+- 地点简称也要识别，如"帝国理工"应理解为"帝国理工大学"或"Imperial College London"
 
 只返回JSON格式，不要包含任何其他文字说明。格式示例：
-{{"listing_type": "for_rent", "bedrooms": 2, "property_type": "flat", "max_price": 4000, "location": "帝国理工大学"}}
+{{"listing_type": "for_rent", "bedrooms": 2, "property_type": "flat", "max_price": 4000, "location": "imperial college"}}
+或
+{{"location": "N10"}}
+或
+{{"location": "imperial college", "bedrooms": 2}}
 
 如果无法确定listing_type，使用默认值：{default_listing_type}"""
 
@@ -105,12 +114,25 @@ class AISearchParser:
             print(f"[AI-PARSER] AI API原始响应: {result_text[:200]}...")  # 只显示前200个字符
             
             # 尝试提取JSON（可能包含markdown代码块）
-            json_match = re.search(r'\{[^}]+\}', result_text, re.DOTALL)
-            if json_match:
-                result_text = json_match.group(0)
-                print(f"[AI-PARSER] 提取的JSON: {result_text}")
+            # 先尝试去掉markdown代码块标记
+            if result_text.startswith('```'):
+                # 去掉 ```json 或 ``` 标记
+                lines = result_text.split('\n')
+                result_text = '\n'.join(lines[1:-1]) if lines[-1].strip() == '```' else '\n'.join(lines[1:])
             
-            filters = json.loads(result_text)
+            # 尝试直接解析JSON
+            try:
+                filters = json.loads(result_text)
+            except json.JSONDecodeError:
+                # 如果直接解析失败，尝试正则提取JSON对象
+                json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+                if json_match:
+                    result_text = json_match.group(0)
+                    filters = json.loads(result_text)
+                else:
+                    raise json.JSONDecodeError("No JSON found", result_text, 0)
+            
+            print(f"[AI-PARSER] 提取的JSON: {result_text}")
             print(f"[AI-PARSER] 解析成功，得到筛选条件: {filters}")
             
             # 确保listing_type有默认值
@@ -225,19 +247,27 @@ class AISearchParser:
         # 解析位置信息（简单提取关键词）
         # 常见地标和区域
         location_keywords = [
-            '帝国理工大学', 'imperial college', 'ic',
-            '伦敦大学', 'ucl', 'lse', 'kcl',
-            '牛津', 'oxford',
-            '剑桥', 'cambridge',
-            '伦敦', 'london',
-            '曼彻斯特', 'manchester',
-            '伯明翰', 'birmingham',
-            '爱丁堡', 'edinburgh'
+            ('帝国理工大学', 'imperial college'),  # 完整名称
+            ('帝国理工', 'imperial college'),  # 简称
+            ('帝国', 'imperial college'),  # 超简称
+            ('伦敦大学', 'ucl'),
+            ('ucl', 'ucl'),
+            ('lse', 'lse'),
+            ('kcl', 'kcl'),
+            ('牛津大学', 'oxford'),
+            ('牛津', 'oxford'),
+            ('剑桥大学', 'cambridge'),
+            ('剑桥', 'cambridge'),
+            ('伦敦', 'london'),
+            ('曼彻斯特', 'manchester'),
+            ('伯明翰', 'birmingham'),
+            ('爱丁堡', 'edinburgh'),
+            ('ic', 'imperial college')
         ]
         
-        for keyword in location_keywords:
-            if keyword in query or keyword.lower() in query_lower:
-                filters['location'] = keyword
+        for keyword_pattern, mapped_location in location_keywords:
+            if keyword_pattern in query or keyword_pattern.lower() in query_lower:
+                filters['location'] = mapped_location
                 break
         
         return filters

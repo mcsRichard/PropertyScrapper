@@ -116,6 +116,263 @@ def fetch_property_html(url, max_retries=3):
                 return None
 
 
+def extract_location_and_postcode(html, url=None, title=None):
+    """
+    从详情页HTML中提取location和postcode
+    优先级：标题 > URL > 页面内容
+    
+    Args:
+        html: 详情页HTML内容
+        url: 房产URL（可选，用于备用提取）
+        title: 房产标题（可选，最准确的来源）
+    
+    Returns:
+        tuple: (location, postcode)
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    location = None
+    postcode = None
+    
+    # 方法0: 从HTML页面结构中提取地址（优先级最高）
+    # Zoopla页面中，标题通常是"2 bed flat for sale"，地址在标题旁边/下方
+    # 例如："Printworks House, Tottenham Lane, Crouch End, London N8"
+    
+    # 0.1: 查找常见的地址选择器
+    address_selectors = [
+        '[data-testid*="address"]',
+        '[data-testid*="location"]',
+        '[itemprop="address"]',
+        'address',
+        '[class*="address"]',
+        '[class*="location"]',
+        '[class*="Address"]',
+        '[class*="Location"]',
+        'p[class*="address"]',
+        'div[class*="address"]',
+        'span[class*="address"]',
+    ]
+    
+    address_text = None
+    for selector in address_selectors:
+        elements = soup.select(selector)
+        for el in elements:
+            text = el.get_text(strip=True)
+            # 检查是否包含邮编模式
+            if re.search(r'\b[A-Z]{1,2}\d{1,2}(?:\s\d[A-Z]{2})?\b', text.upper()):
+                address_text = text
+                print(f"[SCRAPPER] 从选择器提取地址: {selector} -> {address_text[:100]}")
+                break
+        if address_text:
+            break
+    
+    # 0.2: 如果没找到，查找h1标题附近的元素（兄弟节点或父节点的其他子节点）
+    if not address_text:
+        h1_elements = soup.find_all('h1', limit=5)
+        for h1 in h1_elements:
+            # 查找h1的兄弟节点
+            for sibling in h1.next_siblings:
+                if hasattr(sibling, 'get_text'):
+                    text = sibling.get_text(strip=True)
+                    if text and re.search(r'\b[A-Z]{1,2}\d{1,2}(?:\s\d[A-Z]{2})?\b', text.upper()):
+                        address_text = text
+                        print(f"[SCRAPPER] 从h1兄弟节点提取地址: {address_text[:100]}")
+                        break
+                elif isinstance(sibling, str) and sibling.strip():
+                    text = sibling.strip()
+                    if re.search(r'\b[A-Z]{1,2}\d{1,2}(?:\s\d[A-Z]{2})?\b', text.upper()):
+                        address_text = text
+                        print(f"[SCRAPPER] 从h1文本兄弟节点提取地址: {address_text[:100]}")
+                        break
+            if address_text:
+                break
+            
+            # 查找h1的父节点的其他子节点
+            parent = h1.parent
+            if parent:
+                for child in parent.children:
+                    if child != h1 and hasattr(child, 'get_text'):
+                        text = child.get_text(strip=True)
+                        if text and re.search(r'\b[A-Z]{1,2}\d{1,2}(?:\s\d[A-Z]{2})?\b', text.upper()):
+                            address_text = text
+                            print(f"[SCRAPPER] 从h1父节点子元素提取地址: {address_text[:100]}")
+                            break
+            if address_text:
+                break
+    
+    # 0.3: 从提取的地址文本中解析邮编和location
+    if address_text:
+        address_upper = address_text.upper()
+        
+        # 提取完整邮编
+        postcode_pattern_full = r'\b([A-Z]{1,2}\d{1,2}\s\d[A-Z]{2})\b'
+        match = re.search(postcode_pattern_full, address_upper)
+        if match:
+            postcode = match.group(1).strip()
+            print(f"[SCRAPPER] 从地址文本提取完整邮编: {postcode}")
+        else:
+            # 提取邮编前缀
+            postcode_patterns = [
+                r'LONDON\s+([A-Z]{1,2}\d{1,2})\b',     # "London N8"
+                r',\s+([A-Z]{1,2}\d{1,2})\s*$',        # ", N8" 在末尾
+                r'\s+([A-Z]{1,2}\d{1,2})\s*$',         # 末尾的 " N8"
+                r'\b([A-Z]{1,2}\d{1,2})\b',            # 任何位置的邮编前缀
+            ]
+            for pattern in postcode_patterns:
+                match = re.search(pattern, address_upper)
+                if match:
+                    candidate = match.group(1).strip().upper()
+                    if re.match(r'^[A-Z]{1,2}\d{1,2}$', candidate) and len(candidate) >= 2:
+                        postcode = candidate
+                        print(f"[SCRAPPER] 从地址文本提取邮编前缀: {postcode}")
+                        break
+        
+        # 从地址文本提取location
+        london_areas = [
+            'Muswell Hill', 'Crouch End', 'South Kensington', 'Hampstead', 
+            'Camden', 'Greenwich', 'Shoreditch', 'Battersea', 'Clapham', 
+            'Fulham', 'Notting Hill', 'Paddington', 'Marylebone', 'Kensington',
+            'Chelsea', 'Westminster', 'Islington', 'Covent Garden',
+            'Canary Wharf', 'Docklands', 'Tottenham'
+        ]
+        address_lower = address_text.lower()
+        for area in london_areas:
+            if area.lower() in address_lower:
+                location = area
+                print(f"[SCRAPPER] 从地址文本提取地点: {location}")
+                break
+    
+    # 0.4: 如果地址文本中没有，尝试从标题中提取（备选）
+    if not postcode and title:
+        title_upper = title.upper()
+        postcode_patterns = [
+            r'LONDON\s+([A-Z]{1,2}\d{1,2})\b',
+            r',\s+([A-Z]{1,2}\d{1,2})\s*$',
+            r'\s+([A-Z]{1,2}\d{1,2})\s*$',
+        ]
+        for pattern in postcode_patterns:
+            match = re.search(pattern, title_upper)
+            if match:
+                candidate = match.group(1).strip().upper()
+                if re.match(r'^[A-Z]{1,2}\d{1,2}$', candidate):
+                    postcode = candidate
+                    print(f"[SCRAPPER] 从标题提取邮编前缀: {postcode}")
+                    break
+        
+        # 从标题提取location（如果地址文本中没有）
+        if not location:
+            london_areas = [
+                'Muswell Hill', 'Crouch End', 'South Kensington', 'Hampstead', 
+                'Camden', 'Greenwich', 'Shoreditch', 'Battersea', 'Clapham', 
+                'Fulham', 'Notting Hill', 'Paddington', 'Marylebone', 'Kensington',
+                'Chelsea', 'Westminster', 'Islington', 'Covent Garden',
+                'Canary Wharf', 'Docklands', 'Tottenham'
+            ]
+            title_lower = title.lower()
+            for area in london_areas:
+                if area.lower() in title_lower:
+                    location = area
+                    print(f"[SCRAPPER] 从标题提取地点: {location}")
+                    break
+    
+    # 方法1: 从ld+json中提取
+    if not postcode or not location:
+        ldjson = soup.find("script", attrs={"type": "application/ld+json"})
+        if ldjson:
+            try:
+                data = json.loads(ldjson.string)
+                # 处理@graph数组
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and item.get("@type") in ["Place", "PostalAddress", "RealEstateAgent"]:
+                            address = item.get("address") or item
+                            if isinstance(address, dict):
+                                if not postcode:
+                                    postcode = address.get("postalCode") or address.get("postcode")
+                                if not location:
+                                    location = address.get("addressLocality") or address.get("locality")
+                                    if not location:
+                                        # 尝试从streetAddress中提取
+                                        street = address.get("streetAddress", "")
+                                        if street:
+                                            parts = street.split(',')
+                                            if len(parts) > 1:
+                                                location = parts[-1].strip()
+                elif isinstance(data, dict):
+                    # 检查是否有address字段
+                    address = data.get("address", {})
+                    if isinstance(address, dict):
+                        if not postcode:
+                            postcode = address.get("postalCode") or address.get("postcode")
+                        if not location:
+                            location = address.get("addressLocality") or address.get("locality")
+            except Exception as e:
+                print(f"[DEBUG] Failed to parse ld+json for location/postcode: {e}")
+    
+    # 方法2: 从URL中提取邮编（备用）
+    if not postcode and url:
+        postcode_pattern = r'[\/\-]([A-Z]{1,2}\d{1,2})[\/\-]'
+        match = re.search(postcode_pattern, url.upper())
+        if match:
+            postcode = match.group(1)
+            print(f"[SCRAPPER] 从URL提取邮编: {postcode}")
+    
+    # 方法3: 从页面文本中提取邮编（最后尝试）
+    if not postcode:
+        # 英国邮编格式：字母+数字+字母，如 N10 1AB, SW7 3AZ
+        postcode_pattern = r'\b([A-Z]{1,2}\d{1,2}\s?\d[A-Z]{2})\b'
+        text = soup.get_text()
+        match = re.search(postcode_pattern, text.upper())
+        if match:
+            postcode = match.group(1).strip()
+            print(f"[SCRAPPER] 从页面文本提取完整邮编: {postcode}")
+        else:
+            # 尝试邮编前缀
+            postcode_prefix_pattern = r'\b([A-Z]{1,2}\d{1,2})\b'
+            match = re.search(postcode_prefix_pattern, text.upper())
+            if match:
+                postcode = match.group(1).strip()
+                print(f"[SCRAPPER] 从页面文本提取邮编前缀: {postcode}")
+    
+    # 方法4: 从地址区域提取location（最后尝试）
+    if not location:
+        # 查找包含"London"或地区名的元素
+        address_selectors = [
+            '[data-testid*="address"]',
+            '.address',
+            '[class*="address"]',
+            '[itemprop="address"]',
+            'h1[class*="title"]',  # 标题可能包含地址
+        ]
+        for selector in address_selectors:
+            elements = soup.select(selector)
+            for el in elements:
+                text = el.get_text(strip=True)
+                # 常见伦敦地区
+                london_areas = [
+                    'Muswell Hill', 'Hampstead', 'Camden', 'Greenwich',
+                    'Shoreditch', 'Battersea', 'Clapham', 'Fulham',
+                    'Notting Hill', 'Paddington', 'Marylebone', 'Kensington',
+                    'Chelsea', 'Westminster', 'Islington', 'Covent Garden',
+                    'Canary Wharf', 'Docklands'
+                ]
+                for area in london_areas:
+                    if area.lower() in text.lower():
+                        location = area
+                        break
+                if location:
+                    break
+            if location:
+                break
+    
+    # 方法4: 从URL中提取（备用）
+    if not postcode and url:
+        postcode_pattern = r'[\/\-]([A-Z]{1,2}\d{1,2})[\/\-]'
+        match = re.search(postcode_pattern, url.upper())
+        if match:
+            postcode = match.group(1)
+    
+    return location, postcode
+
 def parse_property_block(block):
     data = {}
     # 1. price
@@ -194,6 +451,13 @@ def parse_properties(html):
                             prop["price"] = "£" + prod.get("offers", {}).get("price", "")
                             prop["url"] = prod.get("url")
                             prop["image"] = prod.get("image")
+                            
+                            # 提取location和postcode
+                            address = prod.get("address", {})
+                            if isinstance(address, dict):
+                                prop["postcode"] = address.get("postalCode") or address.get("postcode")
+                                prop["location"] = address.get("addressLocality") or address.get("locality")
+                            
                             properties.append(prop)
                 print(f"[DEBUG] Extracted {len(properties)} properties from ld+json.")
             except Exception as e:
@@ -568,9 +832,30 @@ if __name__ == "__main__":
     html = fetch_property_html(url)
     if html:
         properties = parse_properties(html)
-        # Add listing_type to each property
+        # Add listing_type and extract location/postcode for each property
         for prop in properties:
             prop['listing_type'] = listing_type
+            
+            # 如果有URL，尝试从详情页提取location和postcode
+            detail_url = prop.get('url')
+            if detail_url and detail_url.startswith('http'):
+                print(f"[INFO] Fetching location/postcode for: {detail_url}")
+                detail_html = fetch_property_html_fast(detail_url)
+                if not detail_html:
+                    detail_html = fetch_property_html(detail_url)
+                
+                if detail_html:
+                    # 传入标题以提高提取准确性
+                    prop_title = prop.get('title', '')
+                    location, postcode = extract_location_and_postcode(detail_html, detail_url, prop_title)
+                    if location:
+                        prop['location'] = location
+                        print(f"[INFO] Extracted location: {location}")
+                    if postcode:
+                        prop['postcode'] = postcode
+                        print(f"[INFO] Extracted postcode: {postcode}")
+                else:
+                    print(f"[WARNING] Failed to fetch detail page for location/postcode")
         
         print(f"[INFO] Successfully extracted {len(properties)} properties")
         print(f"[INFO] Translation completed for all descriptions")

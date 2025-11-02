@@ -265,8 +265,18 @@ def ai_search_properties():
         
         # 使用AI解析器解析查询
         print("[AI-SEARCH] 开始AI解析查询...")
+        print(f"[AI-SEARCH] 原始查询: {query}")
         parser = AISearchParser()
         filters = parser.parse_query(query, default_listing_type)
+        
+        # 检查AI是否提取了location
+        if not filters.get('location'):
+            print("[AI-SEARCH] ⚠️ 警告: AI解析器未提取到location，原始查询可能是纯邮编")
+            # 如果查询看起来像邮编，直接使用
+            cleaned_query = query.strip().upper().replace(',', '').replace('.', '')
+            if LocationMapper.is_postcode_prefix(cleaned_query):
+                print(f"[AI-SEARCH] ✅ 检测到查询本身是邮编格式，使用: {cleaned_query}")
+                filters['location'] = cleaned_query
         
         # ========== 调试信息：显示AI解析结果 ==========
         print("[AI-SEARCH] AI解析结果:")
@@ -281,19 +291,28 @@ def ai_search_properties():
         original_location = filters.get('location')
         if original_location:
             print(f"[AI-SEARCH] 尝试将地名转换为邮编: {original_location}")
+            
+            # 清理location（去除空格和标点）
+            cleaned_location = original_location.strip().replace(',', '').replace('.', '')
+            
             # 首先检查是否是邮编格式，如果是则直接使用
-            if LocationMapper.is_postcode_prefix(original_location.replace(',', '').strip().split(',')[0]):
-                print(f"[AI-SEARCH] 检测到邮编格式，直接使用: {original_location}")
+            if LocationMapper.is_postcode_prefix(cleaned_location):
+                print(f"[AI-SEARCH] ✅ 检测到邮编格式，直接使用: {cleaned_location}")
+                # 邮编直接使用，不需要转换
+                filters['location'] = cleaned_location
             else:
                 # 使用动态API查询，如果失败会自动降级到静态字典或原始location
+                print(f"[AI-SEARCH] 尝试映射地名: {original_location}")
                 mapped_location = LocationMapper.location_to_search_term(original_location, use_api=True)
                 
                 if mapped_location != original_location:
-                    print(f"[AI-SEARCH] 地名映射成功: {original_location} -> {mapped_location}")
+                    print(f"[AI-SEARCH] ✅ 地名映射成功: {original_location} -> {mapped_location}")
                     filters['location'] = mapped_location
                     filters['original_location'] = original_location  # 保留原始地名用于显示
                 else:
-                    print(f"[AI-SEARCH] 未找到邮编映射，使用原始location进行搜索: {original_location}")
+                    print(f"[AI-SEARCH] ⚠️ 未找到邮编映射，使用原始location进行模糊搜索: {original_location}")
+                    # 保持原始location，数据库查询会使用LIKE搜索
+                    filters['location'] = original_location
         
         print(f"  - location (最终): {filters.get('location')}")
         print("-" * 60)
@@ -310,6 +329,8 @@ def ai_search_properties():
         print(f"  - property_type: {filters.get('property_type')}")
         print(f"  - bedrooms: {filters.get('bedrooms')}")
         print(f"  - location: {filters.get('location')}")
+        location_type = '邮编格式' if filters.get('location') and LocationMapper.is_postcode_prefix(filters.get('location')) else '地名格式'
+        print(f"  - location类型: {location_type}")
         print(f"  - listing_type: {filters.get('listing_type')}")
         
         # 使用解析出的筛选条件获取房产列表
@@ -330,14 +351,58 @@ def ai_search_properties():
         print(f"  - 当前页: {result['page']}/{result['pages']}")
         print(f"  - 本页返回: {len(result['properties'])} 条")
         
+        # 如果找不到结果，进行数据库诊断
+        if result['total'] == 0 and filters.get('location'):
+            print("[AI-SEARCH] 🔍 开始数据库诊断...")
+            from backend.models.database import Property
+            
+            # 诊断1: 检查是否有该location的房产（不限listing_type）
+            location_diagnosis = db.query(Property).filter(
+                Property.postcode.ilike(f"{filters.get('location').upper()}%")
+            ).count()
+            print(f"[AI-SEARCH] 📊 诊断1 - 数据库中postcode以'{filters.get('location').upper()}'开头的房产总数（不限listing_type）: {location_diagnosis}")
+            
+            # 诊断2: 检查是否有该listing_type的房产（不限location）
+            listing_diagnosis = db.query(Property).filter(
+                Property.listing_type == filters.get('listing_type')
+            ).count()
+            print(f"[AI-SEARCH] 📊 诊断2 - 数据库中listing_type='{filters.get('listing_type')}'的房产总数（不限location）: {listing_diagnosis}")
+            
+            # 诊断3: 检查是否有同时满足两个条件的房产
+            combined_diagnosis = db.query(Property).filter(
+                Property.postcode.ilike(f"{filters.get('location').upper()}%"),
+                Property.listing_type == filters.get('listing_type')
+            ).count()
+            print(f"[AI-SEARCH] 📊 诊断3 - 同时满足location和listing_type的房产数: {combined_diagnosis}")
+            
+            # 诊断4: 显示几个实际的postcode示例（如果存在）
+            if location_diagnosis > 0:
+                sample_postcodes = db.query(Property.postcode).filter(
+                    Property.postcode.ilike(f"{filters.get('location').upper()}%")
+                ).limit(5).all()
+                print(f"[AI-SEARCH] 📋 示例postcode（前5个）: {[p[0] for p in sample_postcodes]}")
+            
+            # 诊断5: 检查listing_type分布
+            if location_diagnosis > 0:
+                listing_types = db.query(Property.listing_type, db.func.count(Property.id)).filter(
+                    Property.postcode.ilike(f"{filters.get('location').upper()}%")
+                ).group_by(Property.listing_type).all()
+                print(f"[AI-SEARCH] 📊 该location的listing_type分布: {dict(listing_types)}")
+        
         if result['total'] == 0:
             print("[AI-SEARCH] ⚠️ 警告: 未找到匹配的房产，可能的原因:")
             print("  1. 筛选条件过于严格")
             print("  2. 数据库中确实没有符合条件的房产")
             print("  3. location/邮编映射可能不准确")
+            print("  4. 邮编格式可能不正确（应使用前缀如'N10'而不是完整邮编）")
             # 显示实际使用的筛选条件
             print("[AI-SEARCH] 实际使用的筛选条件:")
             active_filters = {k: v for k, v in filters.items() if v is not None}
+            
+            # 如果使用了邮编格式的location，显示查询SQL提示
+            if filters.get('location') and LocationMapper.is_postcode_prefix(filters.get('location')):
+                print(f"[AI-SEARCH] 📍 邮编查询: 搜索 postcode LIKE '{filters.get('location').upper()}%'")
+                print(f"[AI-SEARCH] 💡 提示: 数据库中应存在以'{filters.get('location').upper()}'开头的邮编")
             for key, value in active_filters.items():
                 print(f"    {key}: {value}")
         else:
@@ -375,6 +440,51 @@ def ai_search_properties():
             display_filters['location'] = filters['original_location']
             display_filters['postcode_prefixes'] = filters['location']  # 保留邮编前缀供调试
         
+        # 构建详细的调试信息
+        debug_info = {
+            'total_found': result['total'],
+            'search_location': filters.get('location'),
+            'original_location': filters.get('original_location') or filters.get('location'),
+            'location_type': '邮编格式' if filters.get('location') and LocationMapper.is_postcode_prefix(filters.get('location')) else '地名格式',
+            'all_filters': filters,
+            'query_params': {
+                'page': page,
+                'limit': limit,
+                'min_price': filters.get('min_price'),
+                'max_price': filters.get('max_price'),
+                'property_type': filters.get('property_type'),
+                'bedrooms': filters.get('bedrooms'),
+                'listing_type': filters.get('listing_type'),
+            },
+            'sql_hint': None,
+            'diagnosis': {}
+        }
+        
+        # 如果使用了邮编格式，添加SQL提示
+        if filters.get('location') and LocationMapper.is_postcode_prefix(filters.get('location')):
+            debug_info['sql_hint'] = f"查询: postcode ILIKE '{filters.get('location').upper()}%'"
+            
+            # 添加诊断信息到debug_info
+            if result['total'] == 0:
+                from backend.models.database import Property
+                location_count = db.query(Property).filter(
+                    Property.postcode.ilike(f"{filters.get('location').upper()}%")
+                ).count()
+                listing_count = db.query(Property).filter(
+                    Property.listing_type == filters.get('listing_type')
+                ).count()
+                combined_count = db.query(Property).filter(
+                    Property.postcode.ilike(f"{filters.get('location').upper()}%"),
+                    Property.listing_type == filters.get('listing_type')
+                ).count()
+                
+                debug_info['diagnosis'] = {
+                    'location_count_all_types': location_count,
+                    'listing_type_count_all_locations': listing_count,
+                    'combined_count': combined_count,
+                    'suggestion': f"数据库中有{location_count}条N10的房产，{listing_count}条{filters.get('listing_type')}类型的房产，但组合查询结果为0"
+                }
+        
         return jsonify({
             'success': True,
             'data': {
@@ -387,12 +497,7 @@ def ai_search_properties():
                 },
                 'filters': display_filters,  # 返回解析出的筛选条件，供前端显示
                 'query': query,  # 返回原始查询
-                'debug_info': {  # 调试信息（可选，可在生产环境移除）
-                    'total_found': result['total'],
-                    'search_location': filters.get('location'),
-                    'original_location': filters.get('original_location'),
-                    'all_filters': filters
-                }
+                'debug_info': debug_info  # 详细的调试信息
             }
         })
         

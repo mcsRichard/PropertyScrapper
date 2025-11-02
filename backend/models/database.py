@@ -5,8 +5,15 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from config import Config
 
-# 创建数据库引擎
-engine = create_engine(Config.DATABASE_URL, echo=Config.DEBUG)
+# 创建数据库引擎，添加连接池配置以处理长时间运行的任务
+engine = create_engine(
+    Config.DATABASE_URL, 
+    echo=Config.DEBUG,
+    pool_pre_ping=True,  # 每次使用前ping数据库，自动重连断开的连接
+    pool_recycle=3600,   # 1小时后回收连接，避免连接超时
+    pool_size=5,         # 连接池大小
+    max_overflow=10      # 允许的额外连接数
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
