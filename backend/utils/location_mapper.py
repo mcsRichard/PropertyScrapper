@@ -26,7 +26,45 @@ class LocationMapper:
     _memory_cache: Dict[str, Optional[List[str]]] = {}
     _last_request_time = 0
     
-    # 注意：已完全移除静态字典，所有地名都通过Nominatim API动态查询
+    # 常见地标到邮编的静态映射（优先使用，避免API调用延迟）
+    # 格式: {地名关键词: [邮编前缀列表]}
+    LANDMARK_POSTCODE_MAP = {
+        # 剑桥大学及学院
+        'trinity college cambridge': ['CB2'],
+        'trinity college': ['CB2'],  # 剑桥三一学院
+        '剑桥三一学院': ['CB2'],
+        '三一学院': ['CB2'],
+        'cambridge university': ['CB2', 'CB3'],
+        'cambridge': ['CB2', 'CB3'],  # 剑桥市
+        '剑桥大学': ['CB2', 'CB3'],
+        '剑桥': ['CB2', 'CB3'],
+        
+        # 伦敦大学
+        'imperial college london': ['SW7'],
+        'imperial college': ['SW7'],
+        '帝国理工大学': ['SW7'],
+        '帝国理工': ['SW7'],
+        '帝国': ['SW7'],
+        'ic': ['SW7'],
+        
+        'ucl': ['WC1'],
+        'london university college': ['WC1'],
+        '伦敦大学': ['WC1'],
+        
+        'lse': ['WC2'],
+        'london school of economics': ['WC2'],
+        '伦敦政治经济学院': ['WC2'],
+        
+        'kcl': ['WC2'],
+        "king's college london": ['WC2'],
+        '国王学院': ['WC2'],
+        
+        # 牛津大学
+        'oxford university': ['OX1', 'OX2'],
+        'oxford': ['OX1', 'OX2'],
+        '牛津大学': ['OX1', 'OX2'],
+        '牛津': ['OX1', 'OX2'],
+    }
     
     @classmethod
     def _get_postcode_from_nominatim(cls, location: str) -> Optional[List[str]]:
@@ -148,10 +186,10 @@ class LocationMapper:
     def get_postcodes(cls, location: str, use_api: bool = True) -> Optional[List[str]]:
         """
         根据地名获取对应的邮编列表
-        使用Nominatim API动态查询
+        优先使用静态映射，如果找不到则使用Nominatim API动态查询
         
         Args:
-            location: 地名（如"帝国理工大学"）
+            location: 地名（如"帝国理工大学"、"剑桥三一学院"）
             use_api: 是否使用API动态查询（默认True）
         
         Returns:
@@ -160,11 +198,27 @@ class LocationMapper:
         if not location:
             return None
         
-        # 如果禁用API，直接返回None
+        # 清理location（去除空格、标点，转换为小写）
+        location_clean = location.strip().lower().replace(',', '').replace('.', '').replace('附近', '').replace('周边', '').strip()
+        
+        # 首先检查静态映射（优先，快速）
+        # 按关键词长度排序，优先匹配更具体的关键词（更长的在前）
+        sorted_landmarks = sorted(cls.LANDMARK_POSTCODE_MAP.items(), key=lambda x: len(x[0]), reverse=True)
+        
+        for landmark, postcodes in sorted_landmarks:
+            # 检查完整匹配或包含关系
+            if landmark == location_clean or landmark in location_clean or location_clean in landmark:
+                # 额外检查：如果是"cambridge"这样的通用词，只有在没有更具体的匹配时才使用
+                if landmark == 'cambridge' and any('trinity' in location_clean or '三一' in location_clean):
+                    continue  # 跳过通用词，继续查找更具体的匹配
+                print(f"[LOCATION-MAPPER] ✅ 从静态映射找到: {location} -> {postcodes} (匹配关键词: {landmark})")
+                return postcodes
+        
+        # 如果禁用API，返回None
         if not use_api:
             return None
         
-        # 直接使用API查询
+        # 使用API查询
         return cls._get_postcode_from_nominatim(location)
     
     @classmethod

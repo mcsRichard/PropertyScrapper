@@ -85,10 +85,16 @@ class AISearchParser:
 请分析查询内容，提取出相应的筛选条件。如果查询中没有明确提到某个条件，则不要包含该字段。
 对于位置信息：
 - 如果提到"附近"、"周边"等，保留地点名称作为location参数
-- 常见地点包括：帝国理工大学（Imperial College London）、帝国理工、帝国大学、伦敦大学（UCL/LSE/KCL）、牛津、剑桥等
+- 常见地点包括：
+  * 帝国理工大学（Imperial College London）、帝国理工、帝国大学 -> "imperial college" 或 "imperial college london"
+  * 剑桥三一学院、三一学院 -> "trinity college cambridge" 或 "trinity college"
+  * 剑桥大学、剑桥 -> "cambridge university" 或 "cambridge"
+  * 牛津大学、牛津 -> "oxford university" 或 "oxford"
+  * 伦敦大学（UCL/LSE/KCL）-> "ucl"、"lse"、"kcl" 或完整名称
 - 如果输入的是英国邮编格式（如"N10"、"SW7"、"WC1"等），直接作为location参数
 - 邮编格式通常是：1-2个字母+1-2个数字，或纯字母（如"N10"、"SW7"、"N"、"SW"等）
 - 地点简称也要识别，如"帝国理工"应理解为"帝国理工大学"或"Imperial College London"
+- 特别注意：如果用户提到"剑桥三一学院附近"，应提取为"trinity college cambridge"或"cambridge"，而不是只提取"cambridge"
 
 只返回JSON格式，不要包含任何其他文字说明。格式示例：
 {{"listing_type": "for_rent", "bedrooms": 2, "property_type": "flat", "max_price": 4000, "location": "imperial college"}}
@@ -245,19 +251,23 @@ class AISearchParser:
                 break
         
         # 解析位置信息（简单提取关键词）
-        # 常见地标和区域
+        # 常见地标和区域（按优先级排序，更具体的在前）
         location_keywords = [
+            ('剑桥三一学院', 'trinity college cambridge'),  # 剑桥三一学院
+            ('三一学院', 'trinity college cambridge'),  # 三一学院（通常指剑桥的）
+            ('trinity college cambridge', 'trinity college cambridge'),  # 英文完整名
+            ('trinity college', 'trinity college cambridge'),  # 英文简称
             ('帝国理工大学', 'imperial college'),  # 完整名称
             ('帝国理工', 'imperial college'),  # 简称
             ('帝国', 'imperial college'),  # 超简称
+            ('剑桥大学', 'cambridge'),  # 剑桥大学
+            ('剑桥', 'cambridge'),  # 剑桥
+            ('牛津大学', 'oxford'),
+            ('牛津', 'oxford'),
             ('伦敦大学', 'ucl'),
             ('ucl', 'ucl'),
             ('lse', 'lse'),
             ('kcl', 'kcl'),
-            ('牛津大学', 'oxford'),
-            ('牛津', 'oxford'),
-            ('剑桥大学', 'cambridge'),
-            ('剑桥', 'cambridge'),
             ('伦敦', 'london'),
             ('曼彻斯特', 'manchester'),
             ('伯明翰', 'birmingham'),
