@@ -78,6 +78,28 @@
     <view class="action-buttons">
       <button class="btn-primary" bindtap="viewOriginalLink">查看原网页</button>
     </view>
+
+    <!-- 客服微信二维码 -->
+    <view class="customer-service-card" wx:if="{{customerService.wechatId || customerService.qrUrl}}">
+      <view class="card-title">客服微信</view>
+      <view class="card-content">
+        <view class="wechat-info" wx:if="{{customerService.wechatId}}">
+          <text class="wechat-label">微信号：</text>
+          <text class="wechat-value">{{customerService.wechatId}}</text>
+          <button class="copy-wechat-btn" size="mini" bindtap="copyCustomerWechat">复制</button>
+        </view>
+        <view class="qr-section" wx:if="{{customerService.qrUrl}}">
+          <image 
+            class="qr-image" 
+            src="{{customerService.qrUrl}}" 
+            mode="aspectFit" 
+            bindtap="previewCustomerServiceQr"
+            show-menu-by-longpress="true"
+          />
+          <view class="qr-tip">长按识别二维码，或点击放大查看</view>
+        </view>
+      </view>
+    </view>
   </view>
   
   <view wx:if="{{!loading && !property}}" class="empty">

@@ -5,10 +5,15 @@ Page({
   data: {
     property: null,
     loading: true,
-    currentImageIndex: 0
+    currentImageIndex: 0,
+    customerService: {
+      wechatId: '',
+      qrUrl: ''
+    }
   },
 
   onLoad(options) {
+    this.setCustomerServiceInfo()
     if (options.id) {
       this.loadPropertyDetail(options.id)
     } else {
@@ -17,6 +22,21 @@ Page({
         icon: 'none'
       })
     }
+  },
+
+  /**
+   * 设置客服信息
+   */
+  setCustomerServiceInfo() {
+    const app = getApp()
+    const wechatId = app?.globalData?.customerServiceWechat || ''
+    const qrUrl = app?.globalData?.customerServiceQrUrl || ''
+    this.setData({
+      customerService: {
+        wechatId,
+        qrUrl
+      }
+    })
   },
 
   /**
@@ -194,5 +214,45 @@ Page({
       title: this.data.property?.title || '房产分享',
       path: `/pages/detail/detail?id=${this.data.property?.id}`
     }
-  }
+  },
+
+  /**
+   * 预览客服二维码
+   */
+  previewCustomerServiceQr() {
+    const qrUrl = this.data.customerService.qrUrl
+    if (!qrUrl) {
+      wx.showToast({
+        title: '暂无客服二维码',
+        icon: 'none'
+      })
+      return
+    }
+    wx.previewImage({
+      urls: [qrUrl]
+    })
+  },
+
+  /**
+   * 复制客服微信号
+   */
+  copyCustomerWechat() {
+    const wechatId = this.data.customerService.wechatId
+    if (!wechatId) {
+      wx.showToast({
+        title: '暂无客服微信号',
+        icon: 'none'
+      })
+      return
+    }
+    wx.setClipboardData({
+      data: wechatId,
+      success: () => {
+        wx.showToast({
+          title: '微信号已复制',
+          icon: 'success'
+        })
+      }
+    })
+  },
 })

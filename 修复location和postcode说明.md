@@ -101,3 +101,6 @@ SELECT COUNT(*) FROM properties WHERE postcode LIKE 'N10%';
 2. 使用Nominatim API从地址文本中提取邮编
 3. 添加更多地点识别规则
 
+
+
+
