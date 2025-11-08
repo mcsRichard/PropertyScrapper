@@ -2,7 +2,8 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc
 from models.database import Property, PropertyImage, Location, DatabaseManager
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
+from datetime import datetime
 import re
 
 class PropertyService:
@@ -14,13 +15,19 @@ class PropertyService:
     def create_property(self, property_data: Dict[str, Any]) -> Property:
         """创建房产记录"""
         # 提取数字价格用于排序
-        price_numeric = self._extract_price_numeric(property_data.get('price', ''))
+        price_numeric = property_data.get('price_numeric')
+        if price_numeric is None:
+            price_numeric = self._extract_price_numeric(property_data.get('price', ''))
         
         # 提取房产类型
-        property_type = self._extract_property_type(property_data.get('title', ''))
+        property_type = property_data.get('property_type')
+        if not property_type:
+            property_type = self._extract_property_type(property_data.get('title', ''))
         
         # 提取卧室数量
-        bedrooms = self._extract_bedrooms(property_data.get('title', ''))
+        bedrooms = property_data.get('bedrooms')
+        if bedrooms is None:
+            bedrooms = self._extract_bedrooms(property_data.get('title', ''))
         
         property_obj = Property(
             title=property_data.get('title'),
@@ -43,6 +50,64 @@ class PropertyService:
         self.db.commit()
         self.db.refresh(property_obj)
         return property_obj
+    
+    def upsert_property(self, property_data: Dict[str, Any]) -> Tuple[Property, bool]:
+        """根据URL插入或更新房产记录，返回(房产对象, 是否新建)"""
+        url = property_data.get('url')
+        if not url:
+            raise ValueError("Property data must include 'url' for upsert")
+        
+        existing = self.get_property_by_url(url)
+        
+        # 标准化字段
+        price = property_data.get('price')
+        price_numeric = property_data.get('price_numeric')
+        if price_numeric is None:
+            price_numeric = self._extract_price_numeric(price or '')
+        
+        property_type = property_data.get('property_type')
+        if not property_type:
+            property_type = self._extract_property_type(property_data.get('title', ''))
+        
+        bedrooms = property_data.get('bedrooms')
+        if isinstance(bedrooms, str):
+            bedrooms_match = re.search(r'\d+', bedrooms)
+            bedrooms = int(bedrooms_match.group()) if bedrooms_match else None
+        if bedrooms is None:
+            bedrooms = self._extract_bedrooms(property_data.get('title', ''))
+        
+        bathrooms = property_data.get('bathrooms')
+        if isinstance(bathrooms, str):
+            bathrooms_match = re.search(r'\d+', bathrooms)
+            bathrooms = int(bathrooms_match.group()) if bathrooms_match else None
+        
+        payload = property_data.copy()
+        payload['price'] = price
+        payload['price_numeric'] = price_numeric
+        payload['property_type'] = property_type
+        payload['bedrooms'] = bedrooms
+        payload['bathrooms'] = bathrooms
+        
+        if existing:
+            updated_fields = [
+                'title', 'price', 'price_numeric', 'area', 'bedrooms', 'bathrooms',
+                'property_type', 'listing_type', 'location', 'postcode',
+                'description', 'description_chinese', 'image_url'
+            ]
+            has_changes = False
+            for field in updated_fields:
+                value = payload.get(field)
+                if value is not None and value != getattr(existing, field):
+                    setattr(existing, field, value)
+                    has_changes = True
+            if has_changes:
+                existing.updated_at = datetime.utcnow()
+                self.db.add(existing)
+                self.db.commit()
+                self.db.refresh(existing)
+            return existing, False
+        
+        return self.create_property(payload), True
     
     def get_properties(self, 
                       page: int = 1, 

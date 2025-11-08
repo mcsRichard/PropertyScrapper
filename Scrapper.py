@@ -2,6 +2,14 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import (
+    TimeoutException,
+    NoSuchElementException,
+    ElementClickInterceptedException,
+    StaleElementReferenceException,
+)
 from bs4 import BeautifulSoup
 import urllib.parse
 import csv
@@ -13,14 +21,24 @@ import re
 from datetime import datetime
 import sys
 import os
+from typing import Dict, List, Any, Optional, Tuple
 
 # 添加backend目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+
+# 强制标准输出使用UTF-8，兼容Windows控制台
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
 
 # 导入COS上传器和配置
 try:
     from backend.utils.cos_uploader import create_cos_uploader
     from backend.config import Config
+    from backend.models.database import DatabaseManager, Property
+    from backend.utils.database import PropertyService
     COS_ENABLED = True
     print("[INFO] COS uploader enabled")
 except ImportError as e:
@@ -58,9 +76,43 @@ def translate_to_chinese(text):
         print(f"[WARNING] Translation failed for text: {text[:50]}... Error: {e}")
         return text  # Return original text if translation fails
 
-def fetch_property_html(url, max_retries=3):
-    """Fetch property HTML with retry mechanism and error handling"""
+
+def is_detail_url(url: str) -> bool:
+    """判断是否为详情页URL"""
+    if not url:
+        return False
+    return '/details/' in url
+
+
+def format_price(price_numeric: Optional[int], listing_type: str) -> Optional[str]:
+    """格式化价格字符串"""
+    if price_numeric is None:
+        return None
+    price_str = f"£{price_numeric:,.0f}"
+    if listing_type == 'for_rent':
+        price_str += " pcm"
+    return price_str
+
+
+def safe_int(value: Any) -> Optional[int]:
+    """安全地将值转换为整数"""
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        text = str(value)
+        match = re.search(r'\d+', text)
+        if match:
+            return int(match.group())
+        return int(float(text))
+    except Exception:
+        return None
+
+def fetch_property_html(url, max_retries=3, click_full_description=False):
+    """Fetch property HTML with retry mechanism and optional 'Read full description' interaction"""
     for attempt in range(max_retries):
+        driver = None
         try:
             print(f"[INFO] Fetching URL (attempt {attempt + 1}/{max_retries}): {url}")
             
@@ -87,8 +139,18 @@ def fetch_property_html(url, max_retries=3):
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
             driver.get(url)
+            wait = WebDriverWait(driver, 15)
+            try:
+                wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+            except TimeoutException:
+                print("[WARNING] Page readyState wait timed out, continuing...")
+
             # 等待页面加载，特别是图片
             time.sleep(random.uniform(3, 6))  # 增加等待时间确保图片加载
+            
+            # 可选：点击“Read full description”按钮
+            if click_full_description:
+                _click_read_full_description(driver, wait)
             
             # 尝试滚动页面以触发懒加载图片
             try:
@@ -100,7 +162,6 @@ def fetch_property_html(url, max_retries=3):
                 pass
             
             html = driver.page_source
-            driver.quit()
             
             print(f"[SUCCESS] Successfully fetched HTML ({len(html)} characters)")
             return html
@@ -114,6 +175,305 @@ def fetch_property_html(url, max_retries=3):
             else:
                 print(f"[ERROR] All {max_retries} attempts failed for URL: {url}")
                 return None
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+
+
+def _click_read_full_description(driver, wait):
+    """尝试点击详情页中的 'Read full description' 或类似按钮"""
+    keywords = [
+        "read full description",
+        "read description",
+        "full description",
+        "read more",
+        "show more",
+    ]
+    clicked = False
+    
+    # 一些常见的按钮选择器
+    candidate_selectors = [
+        '[data-testid*="read-more"]',
+        '[data-testid*="toggle-description"]',
+        'button[aria-expanded="false"]',
+        'button[aria-controls*="description"]',
+        'button',
+        'a[role="button"]',
+    ]
+    
+    try:
+        # 先尝试使用特定选择器
+        for selector in candidate_selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            except Exception:
+                continue
+            for el in elements:
+                try:
+                    text = (el.text or "").strip().lower()
+                    aria_label = (el.get_attribute("aria-label") or "").lower()
+                    if not text and aria_label:
+                        text = aria_label
+                    if text and any(keyword in text for keyword in keywords):
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+                        time.sleep(0.5)
+                        wait.until(lambda d, element=el: element.is_displayed() and element.is_enabled())
+                        driver.execute_script("arguments[0].click();", el)
+                        clicked = True
+                        print("[INFO] Clicked full description button via CSS selector")
+                        break
+                except (StaleElementReferenceException, ElementClickInterceptedException):
+                    continue
+                except TimeoutException:
+                    continue
+                except Exception as click_err:
+                    print(f"[WARNING] Failed to click selector {selector}: {click_err}")
+            if clicked:
+                break
+        
+        # 如果上述方法失败，再尝试根据文本匹配按钮
+        if not clicked:
+            buttons = driver.find_elements(By.XPATH, "//button|//a[@role='button']")
+            for btn in buttons:
+                try:
+                    text = (btn.text or "").strip().lower()
+                    aria_label = (btn.get_attribute("aria-label") or "").lower()
+                    if not text and aria_label:
+                        text = aria_label
+                    if text and any(keyword in text for keyword in keywords):
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                        time.sleep(0.5)
+                        wait.until(lambda d, element=btn: element.is_displayed() and element.is_enabled())
+                        driver.execute_script("arguments[0].click();", btn)
+                        clicked = True
+                        print("[INFO] Clicked full description button via text search")
+                        break
+                except (StaleElementReferenceException, ElementClickInterceptedException):
+                    continue
+                except Exception as click_err:
+                    print(f"[WARNING] Failed to click button by text: {click_err}")
+    except Exception as e:
+        print(f"[WARNING] Encountered error while attempting to click full description button: {e}")
+    
+    if clicked:
+        # 等待展开动画完成
+        time.sleep(1.5)
+    else:
+        print("[INFO] No 'Read full description' button was clicked (not found or already expanded)")
+
+
+def extract_full_description(html: str) -> str:
+    """从详情页HTML中提取完整描述文本"""
+    if not html:
+        return ""
+    
+    soup = BeautifulSoup(html, "html.parser")
+    
+    # 删除脚本和样式，避免干扰
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    
+    # 1. 优先使用带有明显属性的容器
+    description_selectors = [
+        '#detailed-desc',
+        '[id*="detailed-desc"]',
+        '[data-testid*="listing-description"]',
+        '[data-testid*="property-description"]',
+        '[data-testid*="full-description"]',
+        'section[aria-label*="description"]',
+        '[class*="description"]',
+    ]
+    
+    for selector in description_selectors:
+        el = soup.select_one(selector)
+        if el:
+            text = el.get_text(" ", strip=True)
+            if text and len(text) > 40:
+                print(f"[SCRAPPER] Extracted description via selector: {selector}")
+                return text
+    
+    # 2. 查找包含“Full description”或“Property description”的标题
+    heading_keywords = ["full description", "property description", "description"]
+    headings = soup.find_all(['h1', 'h2', 'h3', 'h4', 'span', 'button'])
+    for heading in headings:
+        heading_text = (heading.get_text(strip=True) or "").lower()
+        if any(keyword in heading_text for keyword in heading_keywords):
+            description_parts = []
+            for sibling in heading.next_siblings:
+                if getattr(sibling, "name", None) in ['h1', 'h2', 'h3', 'h4']:
+                    break
+                if hasattr(sibling, "get_text"):
+                    text = sibling.get_text(" ", strip=True)
+                else:
+                    text = str(sibling).strip()
+                if text:
+                    description_parts.append(text)
+            if description_parts:
+                description = " ".join(description_parts).strip()
+                if description:
+                    print("[SCRAPPER] Extracted description via heading siblings")
+                    return description
+    
+    # 3. 尝试从结构化数据（ld+json）中提取
+    ldjson_scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
+    
+    def _extract_from_json(data):
+        if isinstance(data, dict):
+            if data.get("description"):
+                return data["description"]
+            if "@graph" in data:
+                for item in data["@graph"]:
+                    result = _extract_from_json(item)
+                    if result:
+                        return result
+        elif isinstance(data, list):
+            for item in data:
+                result = _extract_from_json(item)
+                if result:
+                    return result
+        return None
+    
+    for script in ldjson_scripts:
+        try:
+            data = json.loads(script.string)
+            description = _extract_from_json(data)
+            if description:
+                description = BeautifulSoup(description, "html.parser").get_text(" ", strip=True)
+                if description:
+                    print("[SCRAPPER] Extracted description via ld+json")
+                    return description
+        except Exception:
+            continue
+    
+    # 4. 最后尝试全局搜索包含关键字的段落
+    paragraphs = soup.find_all(['p', 'div'])
+    for p in paragraphs:
+        text = (p.get_text(" ", strip=True) or "")
+        if len(text) > 120 and ('apartment' in text.lower() or 'property' in text.lower()):
+            print("[SCRAPPER] Extracted description via fallback paragraph search")
+            return text
+    
+    print("[SCRAPPER] Full description not found in detail page")
+    return ""
+
+
+def extract_listings_from_search_html(html: str) -> List[Dict[str, Any]]:
+    """从搜索结果页的ld+json结构中提取房源列表"""
+    results: List[Dict[str, Any]] = []
+    if not html:
+        return results
+    
+    soup = BeautifulSoup(html, "html.parser")
+    ldjson_scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
+    for script in ldjson_scripts:
+        try:
+            data = json.loads(script.string)
+        except Exception:
+            continue
+        if isinstance(data, dict) and data.get("@type") == "SearchResultsPage":
+            item_list = data.get("mainEntity", {}).get("itemListElement", [])
+            for item in item_list:
+                product = item.get("item", {})
+                url = product.get("url")
+                if not url:
+                    continue
+                if url.startswith("/"):
+                    url = urllib.parse.urljoin("https://www.zoopla.co.uk", url)
+                description_html = product.get("description", "")
+                description_text = BeautifulSoup(description_html, "html.parser").get_text(" ", strip=True)
+                price_value = product.get("offers", {}).get("price")
+                price_numeric = safe_int(price_value)
+                results.append({
+                    "title": product.get("name"),
+                    "description": description_text,
+                    "price_numeric": price_numeric,
+                    "url": url,
+                    "image": product.get("image")
+                })
+            break
+    return results
+
+
+def extract_listing_ldjson(html: str) -> Optional[Dict[str, Any]]:
+    """从详情页HTML中提取RealEstateListing的ld+json数据"""
+    if not html:
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        try:
+            data = json.loads(script.string)
+        except Exception:
+            continue
+        if isinstance(data, dict) and data.get("@type") == "RealEstateListing":
+            return data
+    return None
+
+
+def scrape_detail_page(detail_url: str, listing_type: str) -> Optional[Dict[str, Any]]:
+    """抓取单个详情页数据"""
+    print(f"[INFO] Scraping detail page: {detail_url}")
+    detail_html = fetch_property_html(detail_url, click_full_description=True)
+    if not detail_html:
+        detail_html = fetch_property_html_fast(detail_url)
+    if not detail_html:
+        print(f"[ERROR] Failed to fetch detail page: {detail_url}")
+        return None
+    
+    listing_ldjson = extract_listing_ldjson(detail_html) or {}
+    description = extract_full_description(detail_html)
+    if not description:
+        description_html = listing_ldjson.get("description", "")
+        description = BeautifulSoup(description_html, "html.parser").get_text(" ", strip=True)
+    
+    price_numeric = safe_int(listing_ldjson.get("offers", {}).get("price"))
+    price = format_price(price_numeric, listing_type) if price_numeric else None
+    
+    title = None
+    soup = BeautifulSoup(detail_html, "html.parser")
+    h1 = soup.find("h1")
+    if h1:
+        title = h1.get_text(strip=True)
+    if not title:
+        title = listing_ldjson.get("name")
+    
+    image_urls = extract_image_urls_from_detail_html(detail_html, base_url=detail_url)
+    main_image = listing_ldjson.get("image")
+    if image_urls:
+        main_image = image_urls[0]
+    
+    bedrooms = None
+    bathrooms = None
+    for prop in listing_ldjson.get("additionalProperty", []) or []:
+        name = (prop.get("name") or "").lower()
+        if "bed" in name:
+            bedrooms = safe_int(prop.get("value"))
+        elif "bath" in name:
+            bathrooms = safe_int(prop.get("value"))
+    
+    location, postcode = extract_location_and_postcode(detail_html, detail_url, title)
+    
+    property_data: Dict[str, Any] = {
+        "title": title,
+        "price": price,
+        "price_numeric": price_numeric,
+        "bedrooms": bedrooms,
+        "bathrooms": bathrooms,
+        "property_type": None,  # 交由PropertyService自动推断
+        "listing_type": listing_type,
+        "location": location,
+        "postcode": postcode,
+        "description": description,
+        "description_chinese": translate_to_chinese(description) if description else None,
+        "url": detail_url,
+        "image": main_image,
+        "image_url": main_image,
+        "image_urls": image_urls,
+    }
+    
+    return property_data
 
 
 def extract_location_and_postcode(html, url=None, title=None):
@@ -649,15 +1009,18 @@ def fetch_all_images_for_property(detail_url):
 
 def validate_property_data(property_data):
     """Validate property data quality"""
-    required_fields = ['title', 'price', 'url']
+    required_fields = ['title', 'url']
     for field in required_fields:
         if not property_data.get(field):
             return False, f"Missing required field: {field}"
     
     # Validate price format
     price = property_data.get('price', '')
-    if not price.startswith('£') or not price[1:].replace(',', '').isdigit():
-        return False, f"Invalid price format: {price}"
+    if price:
+        numeric_part = price.replace('£', '').replace('pcm', '').replace('pw', '').replace('per week', '')
+        numeric_part = numeric_part.replace(',', '').strip()
+        if numeric_part and not numeric_part.isdigit():
+            return False, f"Invalid price format: {price}"
     
     return True, "Valid"
 
@@ -752,7 +1115,9 @@ def save_to_csv_with_metadata(properties, filename="properties.csv", max_images_
             # 若存在房源详情URL，则尝试抓取详情页所有图片
             detail_url = prop.get('url')
             if detail_url and detail_url.startswith('http'):
-                all_imgs = fetch_all_images_for_property(detail_url)
+                all_imgs = prop.get('image_urls')
+                if not all_imgs:
+                    all_imgs = fetch_all_images_for_property(detail_url)
                 total_imgs = len(all_imgs)
                 uploaded_urls = []
                 if all_imgs:
@@ -794,6 +1159,40 @@ def save_to_csv_with_metadata(properties, filename="properties.csv", max_images_
     
     print(f"[SUCCESS] Saved {len(unique_properties)} properties to {filename}")
 
+
+def persist_property_to_db(
+    property_service: PropertyService,
+    property_data: Dict[str, Any],
+    max_images_per_property: int = 0
+) -> Tuple[Property, bool]:
+    """将房产数据写入数据库，并同步图片"""
+    property_payload = property_data.copy()
+    image_urls = property_payload.pop("image_urls", []) or []
+    
+    # 处理主图
+    if not property_payload.get("image_url") and image_urls:
+        property_payload["image_url"] = image_urls[0]
+    if property_payload.get("image"):
+        property_payload.setdefault("image_url", property_payload["image"])
+    
+    property_obj, created = property_service.upsert_property(property_payload)
+    print(f"[DB] {'Inserted' if created else 'Updated'} property #{property_obj.id}")
+    
+    if image_urls:
+        if isinstance(max_images_per_property, int) and max_images_per_property > 0:
+            image_urls = image_urls[:max_images_per_property]
+        for idx, img_url in enumerate(image_urls):
+            image_data = {
+                "source_url": img_url,
+                "image_url": img_url,
+                "order_index": idx,
+                "is_primary": idx == 0
+            }
+            property_service.upsert_property_image(property_obj.id, image_data)
+    
+    return property_obj, created
+
+
 def detect_listing_type(url):
     """Detect if URL is for sale or for rent"""
     if 'to-rent' in url or '/rent/' in url:
@@ -815,6 +1214,8 @@ if __name__ == "__main__":
                         help='Output CSV filename')
     parser.add_argument('--max-per-property', type=int, default=0,
                         help='Maximum number of images per property (0 means unlimited)')
+    parser.add_argument('--skip-csv', action='store_true',
+                        help='Skip exporting CSV after database update')
     
     args = parser.parse_args()
     
@@ -829,38 +1230,80 @@ if __name__ == "__main__":
     print(f"[INFO] Starting property scraping at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"[INFO] URL: {url}")
     
-    html = fetch_property_html(url)
-    if html:
-        properties = parse_properties(html)
-        # Add listing_type and extract location/postcode for each property
-        for prop in properties:
-            prop['listing_type'] = listing_type
-            
-            # 如果有URL，尝试从详情页提取location和postcode
-            detail_url = prop.get('url')
-            if detail_url and detail_url.startswith('http'):
-                print(f"[INFO] Fetching location/postcode for: {detail_url}")
-                detail_html = fetch_property_html_fast(detail_url)
-                if not detail_html:
-                    detail_html = fetch_property_html(detail_url)
-                
-                if detail_html:
-                    # 传入标题以提高提取准确性
-                    prop_title = prop.get('title', '')
-                    location, postcode = extract_location_and_postcode(detail_html, detail_url, prop_title)
-                    if location:
-                        prop['location'] = location
-                        print(f"[INFO] Extracted location: {location}")
-                    if postcode:
-                        prop['postcode'] = postcode
-                        print(f"[INFO] Extracted postcode: {postcode}")
-                else:
-                    print(f"[WARNING] Failed to fetch detail page for location/postcode")
-        
-        print(f"[INFO] Successfully extracted {len(properties)} properties")
-        print(f"[INFO] Translation completed for all descriptions")
-        
-        # Save with validation and deduplication
-        save_to_csv_with_metadata(properties, filename=output_file, max_images_per_property=max_per_property)
+    scraped_properties: List[Dict[str, Any]] = []
+    
+    if is_detail_url(url):
+        detail_property = scrape_detail_page(url, listing_type)
+        if detail_property:
+            scraped_properties.append(detail_property)
     else:
-        print("[ERROR] Failed to fetch HTML, skipping data processing")
+        html = fetch_property_html(url)
+        if not html:
+            print("[ERROR] Failed to fetch HTML for search results, aborting")
+        else:
+            listings = extract_listings_from_search_html(html)
+            if not listings:
+                print("[WARNING] Failed to extract listings from search results, falling back to legacy parser")
+                listings = []
+                legacy_props = parse_properties(html)
+                for legacy in legacy_props:
+                    if legacy.get('url'):
+                        listings.append({
+                            "url": legacy.get('url'),
+                            "title": legacy.get('title'),
+                            "price_numeric": safe_int(legacy.get('price')),
+                            "description": legacy.get('description'),
+                            "image": legacy.get('image')
+                        })
+            print(f"[INFO] Found {len(listings)} listings in search results")
+            for index, listing in enumerate(listings, start=1):
+                detail_url = listing.get('url')
+                if not detail_url:
+                    continue
+                print(f"[PIPELINE] Processing listing {index}/{len(listings)} -> {detail_url}")
+                detail_property = scrape_detail_page(detail_url, listing_type)
+                if not detail_property:
+                    continue
+                # 合并列表页信息作为兜底
+                if not detail_property.get('title') and listing.get('title'):
+                    detail_property['title'] = listing['title']
+                if not detail_property.get('price_numeric') and listing.get('price_numeric') is not None:
+                    detail_property['price_numeric'] = listing['price_numeric']
+                if not detail_property.get('price'):
+                    detail_property['price'] = format_price(listing.get('price_numeric'), listing_type)
+                if not detail_property.get('image') and listing.get('image'):
+                    detail_property['image'] = listing['image']
+                    detail_property.setdefault('image_url', listing['image'])
+                scraped_properties.append(detail_property)
+    
+    if not scraped_properties:
+        print("[WARNING] No properties were scraped. Nothing to persist.")
+        sys.exit(0)
+    
+    # 持久化到数据库
+    db_manager = DatabaseManager()
+    try:
+        db_session = db_manager.get_session()
+    except Exception as e:
+        print(f"[ERROR] Failed to connect to database: {e}")
+        sys.exit(1)
+    property_service = PropertyService(db_session)
+    inserted = 0
+    updated = 0
+    try:
+        for prop_data in scraped_properties:
+            prop_obj, created = persist_property_to_db(property_service, prop_data, max_images_per_property=max_per_property)
+            if created:
+                inserted += 1
+            else:
+                updated += 1
+    except Exception as e:
+        print(f"[ERROR] Failed while persisting properties: {e}")
+        raise
+    finally:
+        db_manager.close_session(db_session)
+    
+    print(f"[DB] Completed persistence. Inserted: {inserted}, Updated: {updated}")
+    
+    if not args.skip_csv and scraped_properties:
+        save_to_csv_with_metadata(scraped_properties, filename=output_file, max_images_per_property=max_per_property)
