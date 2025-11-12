@@ -88,9 +88,17 @@
         <text class="filter-icon">💰</text>
         <text>{{priceDisplay || '价格'}}</text>
       </view>
+      
+      <!-- 排序选择 -->
+      <picker mode="selector" range="{{sortOptions}}" range-key="label" bindchange="onSortChange">
+        <view class="filter-item {{currentSort !== '默认' ? 'active' : ''}}">
+          <text class="filter-icon">🔀</text>
+          <text>{{currentSort || '排序'}}</text>
+        </view>
+      </picker>
     </view>
     
-    <button class="clear-btn" bindtap="clearFilter" wx:if="{{filters.minPrice || filters.maxPrice || filters.propertyType || filters.bedrooms}}">清除筛选</button>
+    <button class="clear-btn" bindtap="clearFilter" wx:if="{{filters.minPrice || filters.maxPrice || filters.propertyType || filters.bedrooms || currentSort !== '默认'}}">清除筛选</button>
   </view>
 
   <!-- 价格筛选面板 -->

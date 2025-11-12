@@ -33,6 +33,8 @@ def get_properties():
         bedrooms = request.args.get('bedrooms', type=int)
         location = request.args.get('location')
         listing_type = request.args.get('listing_type')
+        sort_by = request.args.get('sort_by')  # 排序字段: 'price', 'created_at', 'updated_at'
+        sort_order = request.args.get('sort_order', 'desc')  # 排序方向: 'asc' 或 'desc'
         
         # 限制每页最大数量
         limit = min(limit, 100)
@@ -50,7 +52,9 @@ def get_properties():
             property_type=property_type,
             bedrooms=bedrooms,
             location=location,
-            listing_type=listing_type
+            listing_type=listing_type,
+            sort_by=sort_by,
+            sort_order=sort_order
         )
         
         # 转换为字典格式

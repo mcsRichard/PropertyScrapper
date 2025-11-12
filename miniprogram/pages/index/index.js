@@ -44,6 +44,15 @@ Page({
     priceRange: [0, 4000], // 默认出租房产的月租金范围
     priceDisplay: '价格',
     pricePresetSelected: -1,
+    // 排序选项
+    sortOptions: [
+      { label: '默认', value: '', sortBy: null, sortOrder: 'desc' },
+      { label: '价格从低到高', value: 'price_asc', sortBy: 'price', sortOrder: 'asc' },
+      { label: '价格从高到低', value: 'price_desc', sortBy: 'price', sortOrder: 'desc' },
+      { label: '最新发布', value: 'created_desc', sortBy: 'created_at', sortOrder: 'desc' },
+      { label: '最早发布', value: 'created_asc', sortBy: 'created_at', sortOrder: 'asc' }
+    ],
+    currentSort: '默认',
     // 出售房产的价格预设（总价）
     forSalePricePresets: [
       { label: '£30万以下', minPrice: 0, maxPrice: 300000 },
@@ -106,6 +115,13 @@ Page({
       propertyType: this.data.filters.propertyType || null,
       bedrooms: this.data.filters.bedrooms || null,
       listingType: this.data.listingType || 'for_sale'
+    }
+    
+    // 添加排序参数
+    const currentSortOption = this.data.sortOptions.find(opt => opt.label === this.data.currentSort)
+    if (currentSortOption && currentSortOption.sortBy) {
+      filters.sortBy = currentSortOption.sortBy
+      filters.sortOrder = currentSortOption.sortOrder
     }
     
     console.log('筛选参数:', filters)
@@ -224,11 +240,28 @@ Page({
       priceRange: [0, defaultMax],
       priceDisplay: '价格',
       pricePresetSelected: -1,
+      currentSort: '默认',
       page: 1,
       hasMore: true,
       searchKeyword: '',
       aiFilters: null,
       aiFiltersText: ''
+    })
+    this.loadProperties(true)
+  },
+
+  /**
+   * 排序变更
+   */
+  onSortChange(e) {
+    const index = e.detail.value
+    const sortOption = this.data.sortOptions[index]
+    console.log('选择排序:', sortOption)
+    
+    this.setData({
+      currentSort: sortOption.label,
+      page: 1,
+      hasMore: true
     })
     this.loadProperties(true)
   },

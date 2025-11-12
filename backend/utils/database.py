@@ -117,8 +117,15 @@ class PropertyService:
                       property_type: Optional[str] = None,
                       bedrooms: Optional[int] = None,
                       location: Optional[str] = None,
-                      listing_type: Optional[str] = None) -> Dict[str, Any]:
-        """获取房产列表"""
+                      listing_type: Optional[str] = None,
+                      sort_by: Optional[str] = None,
+                      sort_order: Optional[str] = 'desc') -> Dict[str, Any]:
+        """获取房产列表
+        
+        Args:
+            sort_by: 排序字段，可选值: 'price', 'created_at', 'updated_at'
+            sort_order: 排序方向，'asc' 或 'desc'，默认 'desc'
+        """
         query = self.db.query(Property)
         
         # 应用筛选条件
@@ -163,9 +170,30 @@ class PropertyService:
         # 获取总数
         total = query.count()
         
+        # 排序
+        if sort_by == 'price':
+            # 按价格排序（使用price_numeric数字字段）
+            if sort_order == 'asc':
+                order_by = asc(Property.price_numeric)
+            else:
+                order_by = desc(Property.price_numeric)
+        elif sort_by == 'created_at':
+            if sort_order == 'asc':
+                order_by = asc(Property.created_at)
+            else:
+                order_by = desc(Property.created_at)
+        elif sort_by == 'updated_at':
+            if sort_order == 'asc':
+                order_by = asc(Property.updated_at)
+            else:
+                order_by = desc(Property.updated_at)
+        else:
+            # 默认按创建时间降序
+            order_by = desc(Property.created_at)
+        
         # 分页
         offset = (page - 1) * limit
-        properties = query.order_by(desc(Property.created_at)).offset(offset).limit(limit).all()
+        properties = query.order_by(order_by).offset(offset).limit(limit).all()
         
         return {
             "properties": properties,

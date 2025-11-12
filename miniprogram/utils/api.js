@@ -57,6 +57,14 @@ function getProperties(page = 1, limit = 20, filters = {}) {
     url += `&listing_type=${filters.listingType}`
   }
   
+  // 添加排序参数
+  if (filters.sortBy) {
+    url += `&sort_by=${filters.sortBy}`
+  }
+  if (filters.sortOrder) {
+    url += `&sort_order=${filters.sortOrder}`
+  }
+  
   console.log('API请求URL:', url)
   return request(url)
 }
