@@ -1232,6 +1232,27 @@ def extract_image_urls_from_detail_html(html, base_url: str = ""):
         except Exception:
             pass
 
+    # 过滤掉非房产图片URL（地图、logo等）
+    filtered_urls = []
+    exclude_patterns = [
+        r'maps\.zoopla\.co\.uk',  # 地图图片
+        r'zoopla_static_agent_logo',  # 中介logo
+        r'static.*logo',  # 静态logo
+        r'marker=',  # 地图标记
+    ]
+    
+    for u in urls:
+        # 检查是否匹配排除模式
+        should_exclude = False
+        for pattern in exclude_patterns:
+            if re.search(pattern, u, re.IGNORECASE):
+                should_exclude = True
+                break
+        if not should_exclude:
+            filtered_urls.append(u)
+    
+    urls = filtered_urls
+    
     # 初始去重（简单字符串去重）
     temp_urls = []
     seen_temp = set()
@@ -1241,7 +1262,7 @@ def extract_image_urls_from_detail_html(html, base_url: str = ""):
             temp_urls.append(u)
     urls = temp_urls
     
-    print(f"[DEBUG] 提取到 {len(urls)} 个图片URL（初始）")
+    print(f"[DEBUG] 提取到 {len(urls)} 个图片URL（过滤后）")
     
     # 智能去重：合并同一图片的不同尺寸版本（Zoopla常见）
     def extract_image_key(url):
@@ -1466,7 +1487,28 @@ def persist_property_to_db(
     if image_urls:
         if isinstance(max_images_per_property, int) and max_images_per_property > 0:
             image_urls = image_urls[:max_images_per_property]
-        for idx, img_url in enumerate(image_urls):
+        
+        # 数据库字段最大长度为500字符，过滤或截断超长URL
+        MAX_URL_LENGTH = 500
+        valid_image_urls = []
+        for img_url in image_urls:
+            if not img_url:
+                continue
+            # 如果URL超过最大长度，尝试截断（保留基础URL，去掉查询参数）
+            if len(img_url) > MAX_URL_LENGTH:
+                # 尝试去掉查询参数
+                parsed = urllib.parse.urlparse(img_url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+                if len(base_url) <= MAX_URL_LENGTH:
+                    img_url = base_url
+                    print(f"[WARNING] Truncated long image URL (removed query params): {img_url[:100]}...")
+                else:
+                    # 如果基础URL仍然太长，跳过这个图片
+                    print(f"[WARNING] Skipping image URL (too long, {len(img_url)} chars): {img_url[:100]}...")
+                    continue
+            valid_image_urls.append(img_url)
+        
+        for idx, img_url in enumerate(valid_image_urls):
             image_data = {
                 "source_url": img_url,
                 "image_url": img_url,
@@ -1501,6 +1543,10 @@ if __name__ == "__main__":
                         help='Maximum number of images per property (0 means unlimited)')
     parser.add_argument('--skip-csv', action='store_true',
                         help='Skip exporting CSV after database update')
+    parser.add_argument('--skip-existing', action='store_true',
+                        help='Skip scraping detail pages for properties that already exist in database (faster for re-runs)')
+    parser.add_argument('--force-update', action='store_true',
+                        help='Force re-scraping even if property exists in database (default behavior)')
     
     args = parser.parse_args()
     
@@ -1541,10 +1587,50 @@ if __name__ == "__main__":
                             "image": legacy.get('image')
                         })
             print(f"[INFO] Found {len(listings)} listings in search results")
+            
+            # 如果启用 --skip-existing，在抓取前先检查数据库
+            existing_urls = set()
+            if args.skip_existing and not args.force_update:
+                print("[INFO] Pre-checking existing properties in database...")
+                db_manager_temp = DatabaseManager()
+                try:
+                    db_session_temp = db_manager_temp.get_session()
+                    property_service_temp = PropertyService(db_session_temp)
+                    for listing in listings:
+                        listing_url = listing.get('url')
+                        if listing_url:
+                            existing = property_service_temp.get_property_by_url(listing_url)
+                            if existing:
+                                existing_urls.add(listing_url)
+                    db_manager_temp.close_session(db_session_temp)
+                    if existing_urls:
+                        print(f"[INFO] Found {len(existing_urls)} existing properties, will skip scraping")
+                except Exception as e:
+                    print(f"[WARNING] Failed to pre-check existing properties: {e}")
+                    existing_urls = set()
+            
             for index, listing in enumerate(listings, start=1):
                 detail_url = listing.get('url')
                 if not detail_url:
                     continue
+                
+                # 如果启用 --skip-existing 且该URL已存在，跳过抓取
+                if args.skip_existing and not args.force_update and detail_url in existing_urls:
+                    print(f"[SKIP] Skipping existing property {index}/{len(listings)}: {detail_url}")
+                    # 使用列表页信息创建基本数据
+                    basic_property = {
+                        "title": listing.get('title'),
+                        "price_numeric": listing.get('price_numeric'),
+                        "price": format_price(listing.get('price_numeric'), listing_type) if listing.get('price_numeric') else None,
+                        "description": listing.get('description'),
+                        "url": detail_url,
+                        "image": listing.get('image'),
+                        "image_url": listing.get('image'),
+                        "listing_type": listing_type,
+                    }
+                    scraped_properties.append(basic_property)
+                    continue
+                
                 print(f"[PIPELINE] Processing listing {index}/{len(listings)} -> {detail_url}")
                 detail_property = scrape_detail_page(detail_url, listing_type)
                 if not detail_property:
@@ -1577,6 +1663,8 @@ if __name__ == "__main__":
     updated = 0
     try:
         for prop_data in scraped_properties:
+            # 注意：如果启用了 --skip-existing，已经在抓取阶段跳过了已存在的记录
+            # 这里直接保存即可（upsert_property 会自动处理更新）
             prop_obj, created = persist_property_to_db(property_service, prop_data, max_images_per_property=max_per_property)
             if created:
                 inserted += 1
