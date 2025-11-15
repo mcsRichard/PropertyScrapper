@@ -77,6 +77,176 @@ def translate_to_chinese(text):
         return text  # Return original text if translation fails
 
 
+def simplify_title(title: str, bedrooms: Optional[int] = None, property_type: Optional[str] = None, postcode: Optional[str] = None) -> str:
+    """
+    简化title，提取关键信息：卧室数、房产类型、邮编
+    例如："1 bed flat to rentGower Street, Bloomsbury, London WC1E" -> "1 bed flat WC1E"
+    
+    Args:
+        title: 原始title
+        bedrooms: 卧室数（可选，如果title中没有则使用此值）
+        property_type: 房产类型（可选）
+        postcode: 邮编（可选）
+    
+    Returns:
+        简化后的title
+    """
+    if not title:
+        return ""
+    
+    title_upper = title.upper()
+    parts = []
+    
+    # 1. 提取卧室数
+    bedroom_match = re.search(r'\b(\d+)\s*(?:bed|bedroom|bedrooms)\b', title_upper)
+    if bedroom_match:
+        bedroom_num = bedroom_match.group(1)
+        parts.append(f"{bedroom_num} bed")
+    elif bedrooms:
+        parts.append(f"{bedrooms} bed")
+    
+    # 2. 提取房产类型
+    property_type_map = {
+        'FLAT': 'flat',
+        'APARTMENT': 'flat',
+        'HOUSE': 'house',
+        'COTTAGE': 'cottage',
+        'BUNGALOW': 'bungalow',
+        'STUDIO': 'studio',
+        'MAISONETTE': 'maisonette',
+        'PENTHOUSE': 'penthouse',
+        'TOWNHOUSE': 'townhouse',
+        'VILLA': 'villa',
+    }
+    
+    found_type = None
+    for key, value in property_type_map.items():
+        if key in title_upper:
+            found_type = value
+            break
+    
+    if not found_type and property_type:
+        # 如果title中没有，使用传入的property_type
+        found_type = property_type.lower()
+    
+    if found_type:
+        parts.append(found_type)
+    elif not parts:  # 如果既没有卧室数也没有类型，至少保留一个通用词
+        # 尝试从title中提取任何房产相关词汇
+        if 'TO RENT' in title_upper or 'FOR RENT' in title_upper:
+            parts.append('property')
+        elif 'FOR SALE' in title_upper or 'TO SELL' in title_upper:
+            parts.append('property')
+    
+    # 3. 提取邮编
+    if postcode:
+        parts.append(postcode)
+    else:
+        # 从title中提取邮编前缀
+        postcode_match = re.search(r'\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b', title_upper)
+        if postcode_match:
+            postcode_candidate = postcode_match.group(1)
+            # 排除SE1（Zoopla注册地址）
+            if postcode_candidate != 'SE1':
+                parts.append(postcode_candidate)
+    
+    if not parts:
+        # 如果什么都没提取到，返回原始title的前50个字符
+        return title[:50].strip()
+    
+    return ' '.join(parts)
+
+
+def generate_chinese_title(simplified_title: str, bedrooms: Optional[int] = None, property_type: Optional[str] = None, postcode: Optional[str] = None) -> str:
+    """
+    生成中文title
+    例如："1 bed flat WC1E" -> "一居室公寓WC1E"
+    
+    Args:
+        simplified_title: 简化后的英文title
+        bedrooms: 卧室数（用于直接生成中文）
+        property_type: 房产类型（用于直接生成中文）
+        postcode: 邮编
+    
+    Returns:
+        中文title
+    """
+    if not simplified_title:
+        return ""
+    
+    parts = []
+    
+    # 1. 卧室数翻译
+    bedroom_match = re.search(r'(\d+)\s*bed', simplified_title, re.IGNORECASE)
+    if bedroom_match:
+        bedroom_num = int(bedroom_match.group(1))
+        bedroom_chinese = {
+            1: "一居室",
+            2: "两居室",
+            3: "三居室",
+            4: "四居室",
+            5: "五居室",
+            6: "六居室",
+        }.get(bedroom_num, f"{bedroom_num}居室")
+        parts.append(bedroom_chinese)
+    elif bedrooms:
+        bedroom_chinese = {
+            1: "一居室",
+            2: "两居室",
+            3: "三居室",
+            4: "四居室",
+            5: "五居室",
+            6: "六居室",
+        }.get(bedrooms, f"{bedrooms}居室")
+        parts.append(bedroom_chinese)
+    
+    # 2. 房产类型翻译
+    property_type_map = {
+        'flat': '公寓',
+        'apartment': '公寓',
+        'house': '房屋',
+        'cottage': '小屋',
+        'bungalow': '平房',
+        'studio': '单间',
+        'maisonette': '复式公寓',
+        'penthouse': '顶层公寓',
+        'townhouse': '联排别墅',
+        'villa': '别墅',
+        'property': '房产',
+    }
+    
+    found_type_chinese = None
+    simplified_lower = simplified_title.lower()
+    for key, value in property_type_map.items():
+        if key in simplified_lower:
+            found_type_chinese = value
+            break
+    
+    if not found_type_chinese and property_type:
+        found_type_chinese = property_type_map.get(property_type.lower(), '房产')
+    
+    if found_type_chinese:
+        parts.append(found_type_chinese)
+    elif not parts:
+        parts.append('房产')
+    
+    # 3. 邮编（保持不变）
+    if postcode:
+        parts.append(postcode)
+    else:
+        postcode_match = re.search(r'\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b', simplified_title.upper())
+        if postcode_match:
+            postcode_candidate = postcode_match.group(1)
+            if postcode_candidate != 'SE1':
+                parts.append(postcode_candidate)
+    
+    if not parts:
+        # 如果什么都没提取到，尝试翻译整个title
+        return translate_to_chinese(simplified_title)
+    
+    return ''.join(parts)
+
+
 def is_detail_url(url: str) -> bool:
     """判断是否为详情页URL"""
     if not url:
@@ -455,8 +625,16 @@ def scrape_detail_page(detail_url: str, listing_type: str) -> Optional[Dict[str,
     
     location, postcode = extract_location_and_postcode(detail_html, detail_url, title)
     
+    # 简化title并生成中文版本
+    original_title = title
+    simplified_title = simplify_title(title, bedrooms=bedrooms, property_type=None, postcode=postcode)
+    chinese_title = generate_chinese_title(simplified_title, bedrooms=bedrooms, property_type=None, postcode=postcode)
+    
+    # 使用中文简化title作为最终title
+    final_title = chinese_title if chinese_title else simplified_title
+    
     property_data: Dict[str, Any] = {
-        "title": title,
+        "title": final_title,  # 使用简化后的中文title
         "price": price,
         "price_numeric": price_numeric,
         "bedrooms": bedrooms,
@@ -472,6 +650,8 @@ def scrape_detail_page(detail_url: str, listing_type: str) -> Optional[Dict[str,
         "image_url": main_image,
         "image_urls": image_urls,
     }
+    
+    print(f"[SCRAPPER] Title processed: '{original_title}' -> '{final_title}'")
     
     return property_data
 
