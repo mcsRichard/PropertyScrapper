@@ -497,94 +497,121 @@ def extract_location_and_postcode(html, url=None, title=None):
     # Zoopla页面中，标题通常是"2 bed flat for sale"，地址在标题旁边/下方
     # 例如："Printworks House, Tottenham Lane, Crouch End, London N8"
     
-    # 0.1: 查找常见的地址选择器
-    address_selectors = [
-        '[data-testid*="address"]',
-        '[data-testid*="location"]',
-        '[itemprop="address"]',
-        'address',
-        '[class*="address"]',
-        '[class*="location"]',
-        '[class*="Address"]',
-        '[class*="Location"]',
-        'p[class*="address"]',
-        'div[class*="address"]',
-        'span[class*="address"]',
-    ]
-    
+    # 0.1: 优先从h1标题附近的元素提取地址（避免提取Zoopla注册地址）
     address_text = None
-    for selector in address_selectors:
-        elements = soup.select(selector)
-        for el in elements:
-            text = el.get_text(strip=True)
-            # 检查是否包含邮编模式
-            if re.search(r'\b[A-Z]{1,2}\d{1,2}(?:\s\d[A-Z]{2})?\b', text.upper()):
-                address_text = text
-                print(f"[SCRAPPER] 从选择器提取地址: {selector} -> {address_text[:100]}")
-                break
-        if address_text:
-            break
-    
-    # 0.2: 如果没找到，查找h1标题附近的元素（兄弟节点或父节点的其他子节点）
-    if not address_text:
-        h1_elements = soup.find_all('h1', limit=5)
-        for h1 in h1_elements:
-            # 查找h1的兄弟节点
-            for sibling in h1.next_siblings:
-                if hasattr(sibling, 'get_text'):
-                    text = sibling.get_text(strip=True)
-                    if text and re.search(r'\b[A-Z]{1,2}\d{1,2}(?:\s\d[A-Z]{2})?\b', text.upper()):
+    h1_elements = soup.find_all('h1', limit=5)
+    for h1 in h1_elements:
+        # 查找h1的兄弟节点
+        for sibling in h1.next_siblings:
+            if hasattr(sibling, 'get_text'):
+                text = sibling.get_text(strip=True)
+                # 检查是否包含邮编前缀模式（只匹配前缀，不匹配完整邮编）
+                if text and re.search(r'\b[A-Z]{1,2}\d{1,2}[A-Z]?\b', text.upper()):
+                    # 排除可能包含Zoopla注册地址的文本（通常包含"SE1"等完整邮编）
+                    if not re.search(r'\bSE1\s+\d[A-Z]{2}\b', text.upper()):
                         address_text = text
                         print(f"[SCRAPPER] 从h1兄弟节点提取地址: {address_text[:100]}")
                         break
-                elif isinstance(sibling, str) and sibling.strip():
-                    text = sibling.strip()
-                    if re.search(r'\b[A-Z]{1,2}\d{1,2}(?:\s\d[A-Z]{2})?\b', text.upper()):
+            elif isinstance(sibling, str) and sibling.strip():
+                text = sibling.strip()
+                if re.search(r'\b[A-Z]{1,2}\d{1,2}[A-Z]?\b', text.upper()):
+                    if not re.search(r'\bSE1\s+\d[A-Z]{2}\b', text.upper()):
                         address_text = text
                         print(f"[SCRAPPER] 从h1文本兄弟节点提取地址: {address_text[:100]}")
                         break
-            if address_text:
-                break
+        if address_text:
+            break
             
-            # 查找h1的父节点的其他子节点
+        # 查找h1的父节点的其他子节点
+        if not address_text:
             parent = h1.parent
             if parent:
                 for child in parent.children:
                     if child != h1 and hasattr(child, 'get_text'):
                         text = child.get_text(strip=True)
-                        if text and re.search(r'\b[A-Z]{1,2}\d{1,2}(?:\s\d[A-Z]{2})?\b', text.upper()):
-                            address_text = text
-                            print(f"[SCRAPPER] 从h1父节点子元素提取地址: {address_text[:100]}")
-                            break
+                        if text and re.search(r'\b[A-Z]{1,2}\d{1,2}[A-Z]?\b', text.upper()):
+                            if not re.search(r'\bSE1\s+\d[A-Z]{2}\b', text.upper()):
+                                address_text = text
+                                print(f"[SCRAPPER] 从h1父节点子元素提取地址: {address_text[:100]}")
+                                break
+        if address_text:
+            break
+    
+    # 0.2: 如果h1附近没找到，再查找常见的地址选择器（但要排除footer等区域）
+    if not address_text:
+        address_selectors = [
+            '[data-testid*="address"]',
+            '[data-testid*="location"]',
+            '[itemprop="address"]',
+            'address',
+            '[class*="address"]',
+            '[class*="location"]',
+            '[class*="Address"]',
+            '[class*="Location"]',
+            'p[class*="address"]',
+            'div[class*="address"]',
+            'span[class*="address"]',
+        ]
+        
+        for selector in address_selectors:
+            elements = soup.select(selector)
+            for el in elements:
+                # 排除footer、copyright等区域
+                try:
+                    parent_classes = []
+                    for p in el.parents:
+                        if hasattr(p, 'get'):
+                            classes = p.get('class', []) or []
+                            if isinstance(classes, list):
+                                parent_classes.extend(classes)
+                            elif isinstance(classes, str):
+                                parent_classes.append(classes)
+                    parent_classes_str = ' '.join(parent_classes).lower()
+                    if 'footer' in parent_classes_str or 'copyright' in parent_classes_str:
+                        continue
+                except Exception:
+                    pass  # 如果检查失败，继续处理
+                    
+                text = el.get_text(strip=True)
+                # 只匹配邮编前缀，不匹配完整邮编（避免匹配Zoopla注册地址）
+                if text and re.search(r'\b[A-Z]{1,2}\d{1,2}[A-Z]?\b', text.upper()):
+                    # 排除包含完整邮编的文本（可能是Zoopla注册地址）
+                    if not re.search(r'\b[A-Z]{1,2}\d{1,2}\s+\d[A-Z]{2}\b', text.upper()):
+                        address_text = text
+                        print(f"[SCRAPPER] 从选择器提取地址: {selector} -> {address_text[:100]}")
+                        break
             if address_text:
                 break
     
-    # 0.3: 从提取的地址文本中解析邮编和location
+    # 0.3: 从提取的地址文本中解析邮编和location（只提取邮编前缀，不提取完整邮编）
     if address_text:
         address_upper = address_text.upper()
         
-        # 提取完整邮编
-        postcode_pattern_full = r'\b([A-Z]{1,2}\d{1,2}\s\d[A-Z]{2})\b'
-        match = re.search(postcode_pattern_full, address_upper)
-        if match:
-            postcode = match.group(1).strip()
-            print(f"[SCRAPPER] 从地址文本提取完整邮编: {postcode}")
-        else:
-            # 提取邮编前缀
-            postcode_patterns = [
-                r'LONDON\s+([A-Z]{1,2}\d{1,2})\b',     # "London N8"
-                r',\s+([A-Z]{1,2}\d{1,2})\s*$',        # ", N8" 在末尾
-                r'\s+([A-Z]{1,2}\d{1,2})\s*$',         # 末尾的 " N8"
-                r'\b([A-Z]{1,2}\d{1,2})\b',            # 任何位置的邮编前缀
-            ]
-            for pattern in postcode_patterns:
-                match = re.search(pattern, address_upper)
-                if match:
-                    candidate = match.group(1).strip().upper()
-                    if re.match(r'^[A-Z]{1,2}\d{1,2}$', candidate) and len(candidate) >= 2:
-                        postcode = candidate
-                        print(f"[SCRAPPER] 从地址文本提取邮编前缀: {postcode}")
-                        break
+        # 只提取邮编前缀（如WC1E, N8, SW7等），不提取完整邮编（避免Zoopla注册地址）
+        # 邮编前缀格式：1-2个字母 + 1-2个数字 + 可选的1个字母（如WC1E）
+        postcode_patterns = [
+            r'LONDON\s+([A-Z]{1,2}\d{1,2}[A-Z]?)\b',     # "London N8" 或 "London WC1E"
+            r',\s+([A-Z]{1,2}\d{1,2}[A-Z]?)\s*$',        # ", N8" 或 ", WC1E" 在末尾
+            r'\s+([A-Z]{1,2}\d{1,2}[A-Z]?)\s*$',         # 末尾的 " N8" 或 " WC1E"
+            r'\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b',            # 任何位置的邮编前缀
+        ]
+        for pattern in postcode_patterns:
+            match = re.search(pattern, address_upper)
+            if match:
+                candidate = match.group(1).strip().upper()
+                # 验证格式：1-2个字母 + 1-2个数字 + 可选的1个字母
+                if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', candidate) and len(candidate) >= 2:
+                    # 排除完整邮编（如SE1 2LH会被匹配为SE1，但我们要避免这种情况）
+                    # 如果候选邮编后面紧跟着空格和数字+字母，说明是完整邮编，跳过
+                    candidate_pos = match.end()
+                    if candidate_pos < len(address_upper):
+                        next_text = address_upper[candidate_pos:candidate_pos+5].strip()
+                        # 如果后面是空格+数字+字母，说明是完整邮编，跳过
+                        if re.match(r'^\s+\d[A-Z]{2}', next_text):
+                            continue
+                    postcode = candidate
+                    print(f"[SCRAPPER] 从地址文本提取邮编前缀: {postcode}")
+                    break
         
         # 从地址文本提取location
         london_areas = [
@@ -605,15 +632,15 @@ def extract_location_and_postcode(html, url=None, title=None):
     if not postcode and title:
         title_upper = title.upper()
         postcode_patterns = [
-            r'LONDON\s+([A-Z]{1,2}\d{1,2})\b',
-            r',\s+([A-Z]{1,2}\d{1,2})\s*$',
-            r'\s+([A-Z]{1,2}\d{1,2})\s*$',
+            r'LONDON\s+([A-Z]{1,2}\d{1,2}[A-Z]?)\b',     # "London N8" 或 "London WC1E"
+            r',\s+([A-Z]{1,2}\d{1,2}[A-Z]?)\s*$',        # ", N8" 或 ", WC1E" 在末尾
+            r'\s+([A-Z]{1,2}\d{1,2}[A-Z]?)\s*$',         # 末尾的 " N8" 或 " WC1E"
         ]
         for pattern in postcode_patterns:
             match = re.search(pattern, title_upper)
             if match:
                 candidate = match.group(1).strip().upper()
-                if re.match(r'^[A-Z]{1,2}\d{1,2}$', candidate):
+                if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', candidate):
                     postcode = candidate
                     print(f"[SCRAPPER] 从标题提取邮编前缀: {postcode}")
                     break
@@ -634,20 +661,53 @@ def extract_location_and_postcode(html, url=None, title=None):
                     print(f"[SCRAPPER] 从标题提取地点: {location}")
                     break
     
-    # 方法1: 从ld+json中提取
+    # 方法1: 从ld+json中提取（备选，优先使用HTML结构提取的邮编）
     if not postcode or not location:
         ldjson = soup.find("script", attrs={"type": "application/ld+json"})
         if ldjson:
             try:
                 data = json.loads(ldjson.string)
+                
+                def extract_postcode_from_ldjson(address_dict):
+                    """从ld+json地址中提取邮编前缀"""
+                    if not address_dict:
+                        return None
+                    postal_code = address_dict.get("postalCode") or address_dict.get("postcode")
+                    if not postal_code:
+                        return None
+                    postal_code = str(postal_code).strip().upper()
+                    # 如果是完整邮编（如"SE1 2LH"），只提取前缀部分
+                    if ' ' in postal_code:
+                        parts = postal_code.split()
+                        if len(parts) > 0:
+                            prefix = parts[0]
+                            # 排除Zoopla注册地址邮编
+                            if prefix == 'SE1':
+                                return None
+                            # 验证格式
+                            if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', prefix):
+                                return prefix
+                    # 如果已经是前缀格式，直接返回（但要排除SE1）
+                    if postal_code == 'SE1':
+                        return None
+                    if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', postal_code):
+                        return postal_code
+                    return None
+                
                 # 处理@graph数组
                 if isinstance(data, list):
                     for item in data:
-                        if isinstance(item, dict) and item.get("@type") in ["Place", "PostalAddress", "RealEstateAgent"]:
+                        if isinstance(item, dict) and item.get("@type") in ["Place", "PostalAddress", "RealEstateListing"]:
+                            # 跳过RealEstateAgent（可能是Zoopla的注册地址）
+                            if item.get("@type") == "RealEstateAgent":
+                                continue
                             address = item.get("address") or item
                             if isinstance(address, dict):
                                 if not postcode:
-                                    postcode = address.get("postalCode") or address.get("postcode")
+                                    extracted = extract_postcode_from_ldjson(address)
+                                    if extracted:
+                                        postcode = extracted
+                                        print(f"[SCRAPPER] 从ld+json提取邮编前缀: {postcode}")
                                 if not location:
                                     location = address.get("addressLocality") or address.get("locality")
                                     if not location:
@@ -662,7 +722,10 @@ def extract_location_and_postcode(html, url=None, title=None):
                     address = data.get("address", {})
                     if isinstance(address, dict):
                         if not postcode:
-                            postcode = address.get("postalCode") or address.get("postcode")
+                            extracted = extract_postcode_from_ldjson(address)
+                            if extracted:
+                                postcode = extracted
+                                print(f"[SCRAPPER] 从ld+json提取邮编前缀: {postcode}")
                         if not location:
                             location = address.get("addressLocality") or address.get("locality")
             except Exception as e:
@@ -670,28 +733,70 @@ def extract_location_and_postcode(html, url=None, title=None):
     
     # 方法2: 从URL中提取邮编（备用）
     if not postcode and url:
-        postcode_pattern = r'[\/\-]([A-Z]{1,2}\d{1,2})[\/\-]'
+        postcode_pattern = r'[\/\-]([A-Z]{1,2}\d{1,2}[A-Z]?)[\/\-]'
         match = re.search(postcode_pattern, url.upper())
         if match:
             postcode = match.group(1)
-            print(f"[SCRAPPER] 从URL提取邮编: {postcode}")
+            print(f"[SCRAPPER] 从URL提取邮编前缀: {postcode}")
     
-    # 方法3: 从页面文本中提取邮编（最后尝试）
+    # 方法3: 从页面文本中提取邮编前缀（最后尝试，避免提取完整邮编）
     if not postcode:
-        # 英国邮编格式：字母+数字+字母，如 N10 1AB, SW7 3AZ
-        postcode_pattern = r'\b([A-Z]{1,2}\d{1,2}\s?\d[A-Z]{2})\b'
         text = soup.get_text()
-        match = re.search(postcode_pattern, text.upper())
-        if match:
-            postcode = match.group(1).strip()
-            print(f"[SCRAPPER] 从页面文本提取完整邮编: {postcode}")
-        else:
-            # 尝试邮编前缀
-            postcode_prefix_pattern = r'\b([A-Z]{1,2}\d{1,2})\b'
-            match = re.search(postcode_prefix_pattern, text.upper())
-            if match:
-                postcode = match.group(1).strip()
-                print(f"[SCRAPPER] 从页面文本提取邮编前缀: {postcode}")
+        # 只提取邮编前缀（如WC1E, N8, SW7等），不提取完整邮编
+        # 优先从h1附近的文本区域提取，避免从footer等区域提取
+        postcode_prefix_patterns = [
+            r'\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b',  # 匹配邮编前缀格式
+        ]
+        # 先尝试从h1附近的文本中提取
+        h1_elements = soup.find_all('h1', limit=3)
+        for h1 in h1_elements:
+            # 获取h1及其周围500字符的文本
+            h1_text = ""
+            if h1.parent:
+                h1_text = h1.parent.get_text()[:500]
+            else:
+                h1_text = h1.get_text()
+            
+            for pattern in postcode_prefix_patterns:
+                matches = re.finditer(pattern, h1_text.upper())
+                for match in matches:
+                    candidate = match.group(1).strip().upper()
+                    if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', candidate) and len(candidate) >= 2:
+                        # 检查后面是否跟着完整邮编的后半部分
+                        candidate_pos = match.end()
+                        if candidate_pos < len(h1_text):
+                            next_text = h1_text[candidate_pos:candidate_pos+5].strip()
+                            if re.match(r'^\s+\d[A-Z]{2}', next_text):
+                                continue  # 跳过完整邮编
+                        postcode = candidate
+                        print(f"[SCRAPPER] 从h1附近文本提取邮编前缀: {postcode}")
+                        break
+                if postcode:
+                    break
+            if postcode:
+                break
+        
+        # 如果h1附近没找到，再从整个页面文本中提取（但要排除完整邮编）
+        if not postcode:
+            for pattern in postcode_prefix_patterns:
+                matches = re.finditer(pattern, text.upper())
+                for match in matches:
+                    candidate = match.group(1).strip().upper()
+                    if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', candidate) and len(candidate) >= 2:
+                        # 检查后面是否跟着完整邮编的后半部分
+                        candidate_pos = match.end()
+                        if candidate_pos < len(text):
+                            next_text = text[candidate_pos:candidate_pos+5].strip()
+                            if re.match(r'^\s+\d[A-Z]{2}', next_text):
+                                continue  # 跳过完整邮编
+                        # 排除常见的Zoopla注册地址邮编（如SE1）
+                        if candidate == 'SE1':
+                            continue
+                        postcode = candidate
+                        print(f"[SCRAPPER] 从页面文本提取邮编前缀: {postcode}")
+                        break
+                if postcode:
+                    break
     
     # 方法4: 从地址区域提取location（最后尝试）
     if not location:
