@@ -6,7 +6,9 @@
     <!-- 图片轮播 -->
     <view class="detail-swiper-wrapper" wx:if="{{property.imageUrls && property.imageUrls.length > 0}}">
       <swiper 
+        id="detail-swiper"
         class="detail-swiper" 
+        current="{{currentImageIndex}}"
         indicator-dots="{{true}}" 
         indicator-color="rgba(255,255,255,0.5)"
         indicator-active-color="#fff"
@@ -28,6 +30,15 @@
           </swiper-item>
         </block>
       </swiper>
+      <!-- 左右箭头按钮 -->
+      <view class="swiper-arrows" wx:if="{{property.imageUrls && property.imageUrls.length > 1}}">
+        <view class="arrow-btn arrow-left" bindtap="onPrevImage">
+          <text class="arrow-icon">‹</text>
+        </view>
+        <view class="arrow-btn arrow-right" bindtap="onNextImage">
+          <text class="arrow-icon">›</text>
+        </view>
+      </view>
       <!-- 图片计数器 -->
       <view class="image-counter" wx:if="{{property.imageUrls && property.imageUrls.length > 1}}">
         <text>{{currentImageIndex + 1}} / {{property.imageUrls.length}}</text>

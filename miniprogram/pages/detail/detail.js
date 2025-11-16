@@ -180,6 +180,42 @@ Page({
   },
 
   /**
+   * 上一张图片
+   */
+  onPrevImage() {
+    const imageUrls = this.data.property?.imageUrls || []
+    if (imageUrls.length <= 1) return
+    
+    let newIndex = this.data.currentImageIndex - 1
+    if (newIndex < 0) {
+      newIndex = imageUrls.length - 1  // 循环到最后一张
+    }
+    
+    // 通过更新currentImageIndex来触发swiper切换
+    this.setData({
+      currentImageIndex: newIndex
+    })
+  },
+
+  /**
+   * 下一张图片
+   */
+  onNextImage() {
+    const imageUrls = this.data.property?.imageUrls || []
+    if (imageUrls.length <= 1) return
+    
+    let newIndex = this.data.currentImageIndex + 1
+    if (newIndex >= imageUrls.length) {
+      newIndex = 0  // 循环到第一张
+    }
+    
+    // 通过更新currentImageIndex来触发swiper切换
+    this.setData({
+      currentImageIndex: newIndex
+    })
+  },
+
+  /**
    * 查看原始链接
    */
   viewOriginalLink() {
