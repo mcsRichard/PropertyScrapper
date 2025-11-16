@@ -58,9 +58,9 @@ def import_csv(filename='properties.csv', clear_table=False):
                     listing_type = row.get('listing_type', 'for_sale')
                     
                     sql = """INSERT INTO properties (title, price, price_numeric, bedrooms, 
-                             listing_type, description, description_chinese, url, image_url, 
+                             listing_type, description_chinese, url, image_url, 
                              location, postcode) 
-                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
                     
                     cursor.execute(sql, (
                         row.get('title'),
@@ -68,7 +68,6 @@ def import_csv(filename='properties.csv', clear_table=False):
                         price_numeric,
                         bedrooms,
                         listing_type,
-                        row.get('description'),
                         row.get('description_chinese'),
                         row.get('url'),
                         image_url,

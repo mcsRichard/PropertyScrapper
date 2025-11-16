@@ -32,7 +32,6 @@ class Property(Base):
     listing_type = Column(String(20), index=True, default='for_sale')  # for_sale or for_rent
     location = Column(String(255), index=True)
     postcode = Column(String(20), index=True)
-    description = Column(Text)
     description_chinese = Column(Text)
     url = Column(String(500), unique=True, index=True)
     image_url = Column(String(500))

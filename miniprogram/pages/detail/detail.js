@@ -115,7 +115,6 @@ Page({
               listing_type: property.listing_type,
               location: property.location,
               postcode: property.postcode,
-              description: property.description,
               description_chinese: property.description_chinese,
               url: property.url,
               image_url: property.image_url,
@@ -213,33 +212,6 @@ Page({
     this.setData({
       currentImageIndex: newIndex
     })
-  },
-
-  /**
-   * 查看原始链接
-   */
-  viewOriginalLink() {
-    const url = this.data.property.url
-    if (url) {
-      wx.showModal({
-        title: '打开原网页',
-        content: '是否在浏览器中打开此房产的原始页面？',
-        success: (res) => {
-          if (res.confirm) {
-            // 复制链接到剪贴板
-            wx.setClipboardData({
-              data: url,
-              success: () => {
-                wx.showToast({
-                  title: '链接已复制',
-                  icon: 'success'
-                })
-              }
-            })
-          }
-        }
-      })
-    }
   },
 
   /**

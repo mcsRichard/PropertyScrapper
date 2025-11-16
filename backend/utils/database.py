@@ -40,7 +40,6 @@ class PropertyService:
             listing_type=property_data.get('listing_type', 'for_sale'),
             location=property_data.get('location'),
             postcode=property_data.get('postcode'),
-            description=property_data.get('description'),
             description_chinese=property_data.get('description_chinese'),
             url=property_data.get('url'),
             image_url=property_data.get('image_url')
@@ -92,7 +91,7 @@ class PropertyService:
             updated_fields = [
                 'title', 'price', 'price_numeric', 'area', 'bedrooms', 'bathrooms',
                 'property_type', 'listing_type', 'location', 'postcode',
-                'description', 'description_chinese', 'image_url'
+                'description_chinese', 'image_url'
             ]
             has_changes = False
             for field in updated_fields:
@@ -261,7 +260,6 @@ class PropertyService:
         """搜索房产"""
         query = self.db.query(Property).filter(or_(
             Property.title.ilike(f"%{keyword}%"),
-            Property.description.ilike(f"%{keyword}%"),
             Property.description_chinese.ilike(f"%{keyword}%"),
             Property.location.ilike(f"%{keyword}%")
         ))

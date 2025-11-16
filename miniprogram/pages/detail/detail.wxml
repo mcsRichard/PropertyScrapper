@@ -79,17 +79,6 @@
       <view class="description-text">{{property.description_chinese}}</view>
     </view>
 
-    <!-- 详细信息(英文) -->
-    <view class="detail-section">
-      <view class="section-title">Property Description</view>
-      <view class="description-text">{{property.description}}</view>
-    </view>
-
-    <!-- 操作按钮 -->
-    <view class="action-buttons">
-      <button class="btn-primary" bindtap="viewOriginalLink">查看原网页</button>
-    </view>
-
     <!-- 客服微信二维码 -->
     <view class="customer-service-card" wx:if="{{customerService.wechatId || customerService.qrUrl}}">
       <view class="card-title">客服微信</view>

@@ -558,7 +558,7 @@ def extract_listings_from_search_html(html: str) -> List[Dict[str, Any]]:
                 price_numeric = safe_int(price_value)
                 results.append({
                     "title": product.get("name"),
-                    "description": description_text,
+                    "description_chinese": translate_to_chinese(description_text) if description_text else None,
                     "price_numeric": price_numeric,
                     "url": url,
                     "image": product.get("image")
@@ -643,7 +643,6 @@ def scrape_detail_page(detail_url: str, listing_type: str) -> Optional[Dict[str,
         "listing_type": listing_type,
         "location": location,
         "postcode": postcode,
-        "description": description,
         "description_chinese": translate_to_chinese(description) if description else None,
         "url": detail_url,
         "image": main_image,
@@ -1065,7 +1064,6 @@ def parse_property_block(block):
             if sib.name in ["h2", "h3"]:
                 break
             desc_text += sib.get_text(" ", strip=True) + " "
-        data['description'] = desc_text.strip()
         data['description_chinese'] = translate_to_chinese(desc_text.strip())
 
     return data
@@ -1091,7 +1089,6 @@ def parse_properties(html):
                             prop = {}
                             prod = item.get("item", {})
                             prop["title"] = prod.get("name")
-                            prop["description"] = prod.get("description")
                             prop["description_chinese"] = translate_to_chinese(prod.get("description", ""))
                             prop["price"] = "£" + prod.get("offers", {}).get("price", "")
                             prop["url"] = prod.get("url")
@@ -1583,7 +1580,7 @@ if __name__ == "__main__":
                             "url": legacy.get('url'),
                             "title": legacy.get('title'),
                             "price_numeric": safe_int(legacy.get('price')),
-                            "description": legacy.get('description'),
+                            "description_chinese": translate_to_chinese(legacy.get('description', '')) if legacy.get('description') else None,
                             "image": legacy.get('image')
                         })
             print(f"[INFO] Found {len(listings)} listings in search results")
@@ -1622,7 +1619,7 @@ if __name__ == "__main__":
                         "title": listing.get('title'),
                         "price_numeric": listing.get('price_numeric'),
                         "price": format_price(listing.get('price_numeric'), listing_type) if listing.get('price_numeric') else None,
-                        "description": listing.get('description'),
+                        "description_chinese": translate_to_chinese(listing.get('description', '')) if listing.get('description') else None,
                         "url": detail_url,
                         "image": listing.get('image'),
                         "image_url": listing.get('image'),
