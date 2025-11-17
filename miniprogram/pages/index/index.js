@@ -10,6 +10,7 @@ Page({
     loading: false,
     hasMore: true,
     showFilter: false,
+    filterExpanded: true, // 筛选器是否展开
     filters: {
       minPrice: '',
       maxPrice: '',
@@ -22,7 +23,7 @@ Page({
     aiFiltersText: '', // AI筛选条件显示文本
     // 筛选选项
     bedroomOptions: [
-      { label: '全部', value: '' },
+      { label: '不限', value: '' },
       { label: '1室', value: 1 },
       { label: '2室', value: 2 },
       { label: '3室', value: 3 },
@@ -30,7 +31,7 @@ Page({
       { label: '5室+', value: 5 }
     ],
     typeOptions: [
-      { label: '全部', value: '' },
+      { label: '不限', value: '' },
       { label: '公寓', value: 'flat' },
       { label: '别墅', value: 'house' },
       { label: '其他', value: 'other' }
@@ -39,10 +40,11 @@ Page({
       { label: '出售', value: 'for_sale' },
       { label: '出租', value: 'for_rent' }
     ],
-    currentBedroom: '全部',
-    currentType: '全部',
-    priceRange: [0, 4000], // 默认出租房产的月租金范围
-    priceDisplay: '价格',
+      currentBedroom: '不限',
+      currentType: '不限',
+      currentPrice: '不限',
+      priceRange: [0, 4000], // 默认出租房产的月租金范围
+      priceDisplay: '不限',
     pricePresetSelected: -1,
     // 排序选项
     sortOptions: [
@@ -69,7 +71,9 @@ Page({
       { label: '£2500-4000/月', minPrice: 2500, maxPrice: 4000 },
       { label: '£4000/月以上', minPrice: 4000, maxPrice: 999999 }
     ],
-    pricePresets: [] // 将根据listingType动态设置
+    pricePresets: [], // 将根据listingType动态设置
+    priceOptions: [{ label: '不限', value: '', minPrice: null, maxPrice: null }], // picker选项（包含"不限"），初始化为默认值
+    currentPrice: '不限' // 当前选择的价格范围
   },
 
   onLoad() {
@@ -79,7 +83,11 @@ Page({
   },
 
   onReady() {
-    // 页面渲染完成
+    // 页面渲染完成，确保priceOptions已初始化
+    if (!this.data.priceOptions || this.data.priceOptions.length <= 1) {
+      console.log('[PRICE] onReady时priceOptions未正确初始化，重新初始化')
+      this.updatePricePresets()
+    }
   },
 
   onShow() {
@@ -194,10 +202,11 @@ Page({
     const filters = this.data.filters
     filters.bedrooms = bedroom.value
     this.setData({
-      currentBedroom: bedroom.label,
+      currentBedroom: bedroom.label || '不限',
       filters: filters,
       page: 1,
-      hasMore: true
+      hasMore: true,
+      filterExpanded: false // 选择后自动收起
     })
     this.loadProperties(true)
   },
@@ -212,10 +221,11 @@ Page({
     const filters = this.data.filters
     filters.propertyType = type.value
     this.setData({
-      currentType: type.label,
+      currentType: type.label || '不限',
       filters: filters,
       page: 1,
-      hasMore: true
+      hasMore: true,
+      filterExpanded: false // 选择后自动收起
     })
     this.loadProperties(true)
   },
@@ -235,10 +245,11 @@ Page({
         propertyType: '',
         bedrooms: ''
       },
-      currentBedroom: '全部',
-      currentType: '全部',
+      currentBedroom: '不限',
+      currentType: '不限',
+      currentPrice: '不限',
       priceRange: [0, defaultMax],
-      priceDisplay: '价格',
+      priceDisplay: '不限',
       pricePresetSelected: -1,
       currentSort: '默认',
       page: 1,
@@ -261,9 +272,19 @@ Page({
     this.setData({
       currentSort: sortOption.label,
       page: 1,
-      hasMore: true
+      hasMore: true,
+      filterExpanded: false // 选择后自动收起
     })
     this.loadProperties(true)
+  },
+  
+  /**
+   * 切换筛选器展开/收起
+   */
+  toggleFilter() {
+    this.setData({
+      filterExpanded: !this.data.filterExpanded
+    })
   },
 
 
@@ -392,8 +413,28 @@ Page({
             propertyType: filters.property_type || '',
             bedrooms: filters.bedrooms || ''
           }
+          
+          // 更新价格显示
+          let currentPrice = '不限'
+          if (newFilters.minPrice || newFilters.maxPrice) {
+            // 查找匹配的价格选项
+            const matchedOption = this.data.priceOptions.find(opt => 
+              opt.minPrice === newFilters.minPrice && opt.maxPrice === newFilters.maxPrice
+            )
+            if (matchedOption) {
+              currentPrice = matchedOption.label
+            } else {
+              // 如果没有匹配的预设，使用格式化显示
+              const listingType = filters.listing_type || this.data.listingType
+              const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
+              currentPrice = this.formatPriceRange([newFilters.minPrice || 0, newFilters.maxPrice || defaultMax])
+            }
+          }
+          
           this.setData({
             filters: newFilters,
+            currentPrice: currentPrice,
+            priceDisplay: currentPrice,
             listingType: filters.listing_type || this.data.listingType
           })
           
@@ -477,23 +518,52 @@ Page({
    */
   updatePricePresets() {
     const listingType = this.data.listingType
+    let presets = []
+    let priceOptions = [{ label: '不限', value: '', minPrice: null, maxPrice: null }]
+    
+    console.log('[PRICE] 更新价格预设, listingType:', listingType)
+    
     if (listingType === 'for_sale') {
-      // 出售：使用总价预设，重置价格为0-200万
+      // 出售：使用总价预设
+      presets = this.data.forSalePricePresets
+      console.log('[PRICE] 出售预设:', presets)
+      priceOptions = priceOptions.concat(presets.map(p => ({
+        label: p.label,
+        value: p.label,
+        minPrice: p.minPrice,
+        maxPrice: p.maxPrice
+      })))
+      console.log('[PRICE] 出售价格选项:', priceOptions)
       this.setData({
-        pricePresets: this.data.forSalePricePresets,
+        pricePresets: presets,
+        priceOptions: priceOptions,
         priceRange: [0, 2000000],
-        priceDisplay: '价格',
+        priceDisplay: '不限',
+        currentPrice: '不限',
         pricePresetSelected: -1
       })
     } else {
-      // 出租：使用月租金预设，重置价格为0-4000/月
+      // 出租：使用月租金预设
+      presets = this.data.forRentPricePresets
+      console.log('[PRICE] 出租预设:', presets)
+      priceOptions = priceOptions.concat(presets.map(p => ({
+        label: p.label,
+        value: p.label,
+        minPrice: p.minPrice,
+        maxPrice: p.maxPrice
+      })))
+      console.log('[PRICE] 出租价格选项:', priceOptions)
       this.setData({
-        pricePresets: this.data.forRentPricePresets,
+        pricePresets: presets,
+        priceOptions: priceOptions,
         priceRange: [0, 4000],
-        priceDisplay: '价格',
+        priceDisplay: '不限',
+        currentPrice: '不限',
         pricePresetSelected: -1
       })
     }
+    
+    console.log('[PRICE] 最终priceOptions:', this.data.priceOptions)
   },
 
   /**
@@ -508,7 +578,9 @@ Page({
       hasMore: true,
       // 清除价格筛选
       'filters.minPrice': '',
-      'filters.maxPrice': ''
+      'filters.maxPrice': '',
+      currentPrice: '不限',
+      priceDisplay: '不限'
     })
     // 更新价格预设
     this.updatePricePresets()
@@ -516,12 +588,42 @@ Page({
   },
 
   /**
-   * 点击价格筛选按钮
+   * 价格范围筛选变更
    */
-  onPriceFilterTap() {
+  onPriceChange(e) {
+    const index = e.detail.value
+    console.log('[PRICE] 选择索引:', index)
+    console.log('[PRICE] 当前priceOptions:', this.data.priceOptions)
+    console.log('[PRICE] priceOptions长度:', this.data.priceOptions ? this.data.priceOptions.length : 0)
+    
+    if (!this.data.priceOptions || this.data.priceOptions.length === 0) {
+      console.error('[PRICE] priceOptions为空，重新初始化')
+      this.updatePricePresets()
+      return
+    }
+    
+    const priceOption = this.data.priceOptions[index]
+    console.log('选择价格范围:', priceOption)
+    
+    const filters = this.data.filters
+    if (priceOption.minPrice !== null && priceOption.maxPrice !== null) {
+      filters.minPrice = priceOption.minPrice
+      filters.maxPrice = priceOption.maxPrice
+    } else {
+      // 选择"不限"
+      filters.minPrice = ''
+      filters.maxPrice = ''
+    }
+    
     this.setData({
-      showFilter: true
+      currentPrice: priceOption.label,
+      filters: filters,
+      priceDisplay: priceOption.label,
+      page: 1,
+      hasMore: true,
+      filterExpanded: false // 选择后自动收起
     })
+    this.loadProperties(true)
   },
 
   /**
@@ -581,7 +683,7 @@ Page({
     const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
     
     if (minPrice === 0 && maxPrice >= defaultMax) {
-      return '价格'
+      return '不限'
     }
     
     if (listingType === 'for_sale') {
@@ -603,7 +705,7 @@ Page({
         return `£${minPrice}/月以上`
       }
     }
-    return '价格'
+    return '不限'
   },
 
   /**
@@ -638,7 +740,7 @@ Page({
     const currentFilter = this.data.filters
     const listingType = this.data.listingType
     const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
-    let display = '价格'
+    let display = '不限'
     if (currentFilter.minPrice || currentFilter.maxPrice) {
       const range = [currentFilter.minPrice || 0, currentFilter.maxPrice || defaultMax]
       display = this.formatPriceRange(range)
