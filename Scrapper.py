@@ -46,9 +46,69 @@ except ImportError as e:
     print("[WARNING] Please install: pip install cos-python-sdk-v5")
     COS_ENABLED = False
 
+def filter_description_sentences(text: str) -> str:
+    """
+    过滤描述文本，移除包含特定关键字的整句
+    
+    Args:
+        text: 原始描述文本
+        
+    Returns:
+        过滤后的描述文本
+    """
+    if not text or not text.strip():
+        return ""
+    
+    # 需要过滤的关键字（不区分大小写）
+    filter_keywords = ['Chinese', 'China', 'Wechat', 'whatsapp']
+    
+    # 按句子分割（支持句号、问号、感叹号、换行符）
+    # 使用正则表达式分割，保留分隔符以便重组
+    # 匹配句号、问号、感叹号后跟空格，或者换行符
+    sentence_endings = r'[.!?]\s+|\n+'
+    sentences = re.split(f'({sentence_endings})', text)
+    
+    # 过滤句子
+    filtered_sentences = []
+    for i, segment in enumerate(sentences):
+        segment_stripped = segment.strip()
+        
+        # 跳过空段
+        if not segment_stripped:
+            continue
+        
+        # 检查是否是句子分隔符（匹配正则中的分组）
+        if re.match(sentence_endings, segment):
+            # 如果前一个句子被保留，则保留分隔符
+            if filtered_sentences:
+                filtered_sentences.append(segment)
+            continue
+        
+        # 检查句子是否包含关键字（不区分大小写）
+        segment_lower = segment_stripped.lower()
+        should_filter = any(keyword.lower() in segment_lower for keyword in filter_keywords)
+        
+        if not should_filter:
+            filtered_sentences.append(segment)
+    
+    # 重新组合过滤后的文本
+    filtered_text = ''.join(filtered_sentences).strip()
+    
+    # 清理多余的空白字符
+    filtered_text = re.sub(r' +', ' ', filtered_text)
+    filtered_text = re.sub(r'\n\s*\n+', '\n\n', filtered_text)
+    
+    return filtered_text
+
+
 def translate_to_chinese(text):
     """Translate English text to Chinese using Google Translate API"""
     if not text or not text.strip():
+        return ""
+    
+    # 先过滤包含关键字的句子
+    filtered_text = filter_description_sentences(text)
+    if not filtered_text or not filtered_text.strip():
         return ""
     
     try:
@@ -59,7 +119,7 @@ def translate_to_chinese(text):
             'sl': 'en',  # source language (English)
             'tl': 'zh',  # target language (Chinese)
             'dt': 't',
-            'q': text
+            'q': filtered_text
         }
         
         response = requests.get(url, params=params, timeout=10)
@@ -70,11 +130,11 @@ def translate_to_chinese(text):
             translated_text = ''.join([item[0] for item in result[0] if item[0]])
             return translated_text.strip()
         else:
-            return text  # Return original if translation fails
+            return filtered_text  # Return filtered original if translation fails
             
     except Exception as e:
-        print(f"[WARNING] Translation failed for text: {text[:50]}... Error: {e}")
-        return text  # Return original text if translation fails
+        print(f"[WARNING] Translation failed for text: {filtered_text[:50]}... Error: {e}")
+        return filtered_text  # Return filtered original text if translation fails
 
 
 def simplify_title(title: str, bedrooms: Optional[int] = None, property_type: Optional[str] = None, postcode: Optional[str] = None) -> str:

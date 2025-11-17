@@ -75,6 +75,8 @@ class AISearchParser:
 可用的筛选参数包括：
 - listing_type: "for_sale"（出售）或 "for_rent"（出租）
 - bedrooms: 卧室数量（整数，如1、2、3）
+  * 注意：用户可能用"2室"、"2居室"、"两室"、"两居室"等表达方式，都要识别为bedrooms=2
+  * 常见表达：1室/一室、2室/两室/2居室/两居室、3室/三室/3居室/三居室等
 - property_type: "flat"（公寓）、"house"（别墅）、"studio"（单间）、"other"（其他）
 - max_price: 最高价格（整数，英镑）
 - min_price: 最低价格（整数，英镑）
@@ -178,6 +180,7 @@ class AISearchParser:
         
         # 解析卧室数量（支持中文和英文）
         bedroom_patterns = [
+            r'(\d+)\s*居室',  # 匹配"2居室"、"3居室"等
             r'(\d+)\s*室',
             r'(\d+)\s*bed',
             r'(\d+)\s*bedroom',
@@ -186,21 +189,25 @@ class AISearchParser:
             r'两室',
             r'三室',
             r'四室',
-            r'五室'
+            r'五室',
+            r'两居室',  # 中文数字+居室
+            r'三居室',
+            r'四居室',
+            r'五居室'
         ]
         
         for pattern in bedroom_patterns:
             match = re.search(pattern, query_lower)
             if match:
-                if '一室一厅' in query or '1室' in query:
+                if '一室一厅' in query or '1室' in query or '一居室' in query:
                     filters['bedrooms'] = 1
-                elif '两室' in query or '2室' in query:
+                elif '两室' in query or '2室' in query or '两居室' in query or '2居室' in query:
                     filters['bedrooms'] = 2
-                elif '三室' in query or '3室' in query:
+                elif '三室' in query or '3室' in query or '三居室' in query or '3居室' in query:
                     filters['bedrooms'] = 3
-                elif '四室' in query or '4室' in query:
+                elif '四室' in query or '4室' in query or '四居室' in query or '4居室' in query:
                     filters['bedrooms'] = 4
-                elif '五室' in query or '5室' in query:
+                elif '五室' in query or '5室' in query or '五居室' in query or '5居室' in query:
                     filters['bedrooms'] = 5
                 else:
                     filters['bedrooms'] = int(match.group(1))
