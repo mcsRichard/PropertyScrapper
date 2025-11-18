@@ -6,6 +6,11 @@ from models.database import get_db
 from utils.database import PropertyService
 from utils.ai_parser import AISearchParser
 from utils.location_mapper import LocationMapper
+# 导入OPENAI_SDK_AVAILABLE用于测试
+try:
+    from utils.ai_parser import OPENAI_SDK_AVAILABLE
+except ImportError:
+    OPENAI_SDK_AVAILABLE = False
 from config import Config
 from typing import Dict, Any
 import sys
@@ -13,10 +18,19 @@ import io
 import logging
 import traceback
 
-# 设置标准输出编码为UTF-8
+# 设置标准输出编码为UTF-8（解决Windows控制台编码问题）
 if sys.platform == 'win32':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+    try:
+        # 只在需要时设置，避免重复设置导致的问题
+        if not hasattr(sys.stdout, '_wrapped'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+            sys.stdout._wrapped = True
+        if not hasattr(sys.stderr, '_wrapped'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+            sys.stderr._wrapped = True
+    except (AttributeError, ValueError, TypeError):
+        # 如果已经设置过或设置失败，忽略错误
+        pass
 
 properties_bp = Blueprint('properties', __name__, url_prefix='/api/properties')
 
@@ -236,6 +250,45 @@ def get_filter_options():
             'error': str(e)
         }), 500
 
+@properties_bp.route('/ai-test', methods=['GET'])
+def test_ai_config():
+    """测试AI API配置（用于验证是否真的调用DeepSeek API）"""
+    try:
+        parser = AISearchParser()
+        
+        result = {
+            'ai_available': parser.use_ai,
+            'api_type': parser.api_type,
+            'api_base': parser.api_base if parser.use_ai else None,
+            'model': parser.model if parser.use_ai else None,
+            'api_key_configured': bool(parser.api_key) if hasattr(parser, 'api_key') else False,
+            'sdk_available': OPENAI_SDK_AVAILABLE
+        }
+        
+        # 如果AI可用，尝试一个简单的测试查询
+        if parser.use_ai:
+            try:
+                test_query = "帝国理工附近2室"
+                print(f"[AI-TEST] 执行测试查询: {test_query}")
+                test_result = parser.parse_query(test_query, 'for_rent')
+                result['test_query'] = test_query
+                result['test_result'] = test_result
+                result['test_success'] = True
+            except Exception as e:
+                result['test_success'] = False
+                result['test_error'] = str(e)
+                print(f"[AI-TEST] ❌ 测试查询失败: {e}")
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @properties_bp.route('/ai-search', methods=['POST'])
 def ai_search_properties():
     """AI对话式搜索房产"""
@@ -268,6 +321,11 @@ def ai_search_properties():
         print("[AI-SEARCH] 开始AI解析查询...")
         print(f"[AI-SEARCH] 原始查询: {query}")
         parser = AISearchParser()
+        print(f"[AI-SEARCH] AI解析器状态: use_ai={parser.use_ai}, api_type={parser.api_type}")
+        if parser.use_ai:
+            print(f"[AI-SEARCH] ✅ 将使用 {parser.api_type.upper()} API 进行解析")
+        else:
+            print(f"[AI-SEARCH] ⚠️ 将使用正则表达式降级解析（AI API不可用）")
         filters = parser.parse_query(query, default_listing_type)
         
         # 检查AI是否提取了location

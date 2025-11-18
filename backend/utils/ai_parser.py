@@ -8,12 +8,29 @@ AI自然语言查询解析器
 import os
 import json
 import re
+import sys
+import io
 from typing import Dict, Any, Optional
+
+# 设置标准输出编码为UTF-8（解决Windows控制台编码问题）
+if sys.platform == 'win32':
+    try:
+        # 只在需要时设置，避免重复设置导致的问题
+        if not hasattr(sys.stdout, '_wrapped'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+            sys.stdout._wrapped = True
+        if not hasattr(sys.stderr, '_wrapped'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+            sys.stderr._wrapped = True
+    except (AttributeError, ValueError, TypeError):
+        # 如果已经设置过或设置失败，忽略错误
+        pass
 try:
     from openai import OpenAI
     OPENAI_SDK_AVAILABLE = True
 except ImportError:
     OPENAI_SDK_AVAILABLE = False
+    OpenAI = None  # 避免未定义错误
 
 class AISearchParser:
     """AI搜索解析器"""
@@ -30,25 +47,70 @@ class AISearchParser:
         # 优先使用DeepSeek（国内更稳定）
         if self.api_type == 'deepseek':
             self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY')
-            self.api_base = os.getenv('DEEPSEEK_API_BASE', 'https://api.deepseek.com')
+            # DeepSeek API base_url（OpenAI SDK 会自动添加 /v1 路径）
+            default_base = os.getenv('DEEPSEEK_API_BASE', 'https://api.deepseek.com')
+            # 移除末尾的 /v1（如果存在），因为 OpenAI SDK 会自动添加
+            if default_base.endswith('/v1'):
+                self.api_base = default_base[:-3]
+            elif default_base.endswith('/v1/'):
+                self.api_base = default_base[:-4]
+            else:
+                self.api_base = default_base.rstrip('/')
             self.model = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat')
         else:  # OpenAI
             self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-            self.api_base = os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
+            default_base = os.getenv('OPENAI_API_BASE', 'https://api.openai.com')
+            # 移除末尾的 /v1（如果存在），因为 OpenAI SDK 会自动添加
+            if default_base.endswith('/v1'):
+                self.api_base = default_base[:-3]
+            elif default_base.endswith('/v1/'):
+                self.api_base = default_base[:-4]
+            else:
+                self.api_base = default_base.rstrip('/')
             self.model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
         
         if OPENAI_SDK_AVAILABLE and self.api_key:
             # DeepSeek API与OpenAI API完全兼容，使用相同的SDK
-            self.client = OpenAI(
-                api_key=self.api_key,
-                base_url=self.api_base
-            )
+            # OpenAI SDK 会自动在 base_url 后添加 /v1，所以这里不需要包含 /v1
+            try:
+                # 直接使用显式创建的 http_client，避免 httpx 版本兼容性问题
+                import httpx
+                # 创建 httpx 客户端（不传递 proxies 参数，避免兼容性问题）
+                http_client = httpx.Client(
+                    timeout=60.0,
+                    follow_redirects=True
+                )
+                self.client = OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.api_base,
+                    http_client=http_client
+                )
+            except Exception as e:
+                # 如果显式创建 http_client 失败，尝试默认方式
+                print(f"[AI-PARSER] ⚠️ 显式创建 http_client 失败: {e}，尝试默认方式")
+                try:
+                    self.client = OpenAI(
+                        api_key=self.api_key,
+                        base_url=self.api_base
+                    )
+                except Exception as e2:
+                    print(f"[AI-PARSER] ❌ 默认方式初始化也失败: {e2}")
+                    raise e2
             self.use_ai = True
-            print(f"[INFO] Using {self.api_type.upper()} API for AI parsing")
+            print(f"[AI-PARSER] ✅ 初始化成功: 使用 {self.api_type.upper()} API")
+            print(f"[AI-PARSER] 📍 API地址: {self.api_base}")
+            print(f"[AI-PARSER] 🤖 模型: {self.model}")
+            print(f"[AI-PARSER] 🔑 API密钥: {self.api_key[:10]}...{self.api_key[-4:] if len(self.api_key) > 14 else '***'}")
         else:
             self.client = None
             self.use_ai = False
-            print("[WARNING] AI API not available, using fallback regex parser")
+            if not OPENAI_SDK_AVAILABLE:
+                print("[AI-PARSER] ⚠️ 警告: OpenAI SDK未安装，使用降级正则解析器")
+            elif not self.api_key:
+                print("[AI-PARSER] ⚠️ 警告: API密钥未配置，使用降级正则解析器")
+                print(f"[AI-PARSER] 💡 提示: 请设置环境变量 DEEPSEEK_API_KEY 或 OPENAI_API_KEY")
+            else:
+                print("[AI-PARSER] ⚠️ 警告: AI API不可用，使用降级正则解析器")
     
     def parse_query(self, query: str, default_listing_type: str = 'for_rent') -> Dict[str, Any]:
         """
@@ -107,7 +169,16 @@ class AISearchParser:
 
 如果无法确定listing_type，使用默认值：{default_listing_type}"""
 
-            print(f"[AI-PARSER] 调用AI API，模型: {self.model}")
+            print(f"[AI-PARSER] 🚀 开始调用 {self.api_type.upper()} API")
+            # OpenAI SDK 会自动在 base_url 后添加 /v1，所以实际请求地址是 base_url/v1/chat/completions
+            actual_url = f"{self.api_base}/v1/chat/completions"
+            print(f"[AI-PARSER] 📍 请求地址: {actual_url}")
+            print(f"[AI-PARSER] 🤖 使用模型: {self.model}")
+            print(f"[AI-PARSER] 📝 提示词长度: {len(prompt)} 字符")
+            
+            import time
+            start_time = time.time()
+            
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -118,8 +189,27 @@ class AISearchParser:
                 max_tokens=200
             )
             
-            result_text = response.choices[0].message.content.strip()
-            print(f"[AI-PARSER] AI API原始响应: {result_text[:200]}...")  # 只显示前200个字符
+            elapsed_time = time.time() - start_time
+            
+            # 检查响应是否有效
+            if not response or not hasattr(response, 'choices') or not response.choices:
+                raise ValueError("API响应中没有choices字段或choices为空")
+            
+            if not response.choices[0].message or not hasattr(response.choices[0].message, 'content'):
+                raise ValueError("API响应中没有message.content字段")
+            
+            result_text = response.choices[0].message.content
+            if not result_text:
+                raise ValueError("API响应中的content为空")
+            
+            result_text = result_text.strip()
+            
+            print(f"[AI-PARSER] ✅ API调用成功 (耗时: {elapsed_time:.2f}秒)")
+            print(f"[AI-PARSER] 📊 响应信息:")
+            print(f"[AI-PARSER]    - 模型: {response.model if hasattr(response, 'model') else 'N/A'}")
+            print(f"[AI-PARSER]    - 使用tokens: {response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 'N/A'}")
+            print(f"[AI-PARSER]    - 响应长度: {len(result_text)} 字符")
+            print(f"[AI-PARSER] 📄 AI API原始响应: {result_text[:200]}...")  # 只显示前200个字符
             
             # 尝试提取JSON（可能包含markdown代码块）
             # 先尝试去掉markdown代码块标记
@@ -136,9 +226,15 @@ class AISearchParser:
                 json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
                 if json_match:
                     result_text = json_match.group(0)
-                    filters = json.loads(result_text)
+                    try:
+                        filters = json.loads(result_text)
+                    except json.JSONDecodeError:
+                        # 如果正则提取的JSON也无法解析，抛出异常让外层处理
+                        raise
                 else:
-                    raise json.JSONDecodeError("No JSON found", result_text, 0)
+                    # 如果没有找到JSON对象，抛出JSONDecodeError
+                    # JSONDecodeError(msg, doc, pos) 格式
+                    raise json.JSONDecodeError("No JSON found in response", result_text, 0)
             
             print(f"[AI-PARSER] 提取的JSON: {result_text}")
             print(f"[AI-PARSER] 解析成功，得到筛选条件: {filters}")

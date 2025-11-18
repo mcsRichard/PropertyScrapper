@@ -105,3 +105,4 @@ SELECT COUNT(*) FROM properties WHERE postcode LIKE 'N10%';
 
 
 
+
