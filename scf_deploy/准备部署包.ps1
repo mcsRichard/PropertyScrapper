@@ -64,8 +64,19 @@ Write-Host "✓ requirements.txt复制完成" -ForegroundColor Green
 Write-Host ""
 if (Test-Path "$deployDir\index.py") {
     Write-Host "✓ index.py已存在" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "警告：未找到index.py，请确保已创建" -ForegroundColor Yellow
+}
+
+# 复制scf_bootstrap
+Write-Host ""
+if (Test-Path "scf_bootstrap") {
+    Copy-Item -Path "scf_bootstrap" -Destination "$deployDir\scf_bootstrap" -Force
+    Write-Host "✓ scf_bootstrap复制完成" -ForegroundColor Green
+}
+else {
+    Write-Host "警告：未找到scf_bootstrap，请确保已创建" -ForegroundColor Yellow
 }
 
 # 显示部署包结构
@@ -78,6 +89,7 @@ Write-Host "部署包结构：" -ForegroundColor Yellow
 Write-Host "  scf_deploy/" -ForegroundColor White
 Write-Host "  ├── index.py" -ForegroundColor White
 Write-Host "  ├── requirements.txt" -ForegroundColor White
+Write-Host "  ├── scf_bootstrap" -ForegroundColor White
 Write-Host "  └── backend/" -ForegroundColor White
 Write-Host "      ├── app.py" -ForegroundColor White
 Write-Host "      ├── config.py" -ForegroundColor White

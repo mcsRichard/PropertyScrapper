@@ -172,3 +172,5 @@ curl -X POST http://localhost:5000/api/properties/ai-search \
 查看服务器日志，应该看到详细的API调用信息。
 
 
+
+
