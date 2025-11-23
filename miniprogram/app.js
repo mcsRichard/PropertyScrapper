@@ -25,7 +25,8 @@ App({
   },
 
   globalData: {
-    apiBaseUrl: 'http://localhost:5000',
+    //apiBaseUrl: 'http://localhost:5000',//本地
+    apiBaseUrl: 'https://1383789184-lebyqyy34m.ap-shanghai.tencentscf.com',//线上
     userInfo: null,
     // 客服微信号与二维码图片地址（请根据实际情况填写）
     customerServiceWechat: '',  // 例如：'uk-property-support'
