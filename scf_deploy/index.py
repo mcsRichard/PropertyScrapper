@@ -13,20 +13,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 # 导入 Flask 应用创建函数
 from app import create_app
 
-# 创建 Flask 应用实例
-# Web 函数需要这个 app 对象
+# 创建 Flask 应用实例（SCF Web 函数必须暴露 app）
 app = create_app()
 
 
-def main():
-    """
-    本地 / Web 函数启动入口
-    在 Web 函数“启动命令”里填：python index.py
-    """
-    port = int(os.environ.get("PORT", os.environ.get("SCF_WEB_PORT", 9000)))
-    # 在 Web 函数中，必须监听 0.0.0.0，并使用平台提供的端口
-    app.run(host="0.0.0.0", port=port)
-
-
+# Web 函数必须监听 9000 端口
 if __name__ == "__main__":
-    main()
+    port = int(os.environ.get("PORT", 9000))
+    app.run(host="0.0.0.0", port=port, debug=False)
