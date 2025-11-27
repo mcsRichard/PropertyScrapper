@@ -627,6 +627,149 @@ def extract_listings_from_search_html(html: str) -> List[Dict[str, Any]]:
     return results
 
 
+def _convert_legacy_props_to_listings(legacy_props: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """将旧解析逻辑返回的数据转换为列表页结构"""
+    listings: List[Dict[str, Any]] = []
+    if not legacy_props:
+        return listings
+    
+    for legacy in legacy_props:
+        detail_url = legacy.get('url')
+        if not detail_url:
+            continue
+        
+        listing: Dict[str, Any] = {
+            "title": legacy.get('title'),
+            "url": detail_url,
+            "price_numeric": safe_int(legacy.get('price')),
+            "image": legacy.get('image')
+        }
+        
+        # 兼容旧字段名称
+        if legacy.get('description_chinese'):
+            listing['description_chinese'] = legacy.get('description_chinese')
+        elif legacy.get('description'):
+            listing['description_chinese'] = translate_to_chinese(legacy['description'])
+        
+        listings.append(listing)
+    
+    return listings
+
+
+def extract_next_page_url(html: str, current_url: str) -> Optional[str]:
+    """从搜索结果页中提取下一页URL"""
+    if not html:
+        return None
+    
+    soup = BeautifulSoup(html, "html.parser")
+    
+    def _contains_next(value):
+        if not value:
+            return False
+        if isinstance(value, list):
+            return any(isinstance(v, str) and 'next' in v.lower() for v in value)
+        return isinstance(value, str) and 'next' in value.lower()
+    
+    candidates = [
+        soup.find("link", rel=_contains_next),
+        soup.find("a", rel=_contains_next),
+        soup.find("a", attrs={"data-testid": "pagination-button-next"}),
+    ]
+    
+    for tag in candidates:
+        if tag and tag.get("href") and tag.get("aria-disabled", "").lower() != "true":
+            next_url = urllib.parse.urljoin(current_url, tag.get("href"))
+            print(f"[INFO] Detected next page link via structured tag: {next_url}")
+            return next_url
+    
+    # 查找导航区域
+    nav_candidates = soup.find_all(
+        lambda tag: tag.name in ("nav", "ul", "div")
+        and isinstance(tag.get("aria-label"), str)
+        and "pagination" in tag.get("aria-label", "").lower()
+    )
+    for nav in nav_candidates:
+        anchor = nav.find("a", string=lambda text: isinstance(text, str) and "next" in text.lower())
+        if anchor and anchor.get("href") and anchor.get("aria-disabled", "").lower() != "true":
+            next_url = urllib.parse.urljoin(current_url, anchor.get("href"))
+            print(f"[INFO] Detected next page link via pagination nav: {next_url}")
+            return next_url
+    
+    # 最后尝试全局搜索带有“Next”文本的链接
+    anchor = soup.find("a", string=lambda text: isinstance(text, str) and "next" in text.lower())
+    if anchor and anchor.get("href") and anchor.get("aria-disabled", "").lower() != "true":
+        next_url = urllib.parse.urljoin(current_url, anchor.get("href"))
+        print(f"[INFO] Detected next page link via text search: {next_url}")
+        return next_url
+    
+    print("[INFO] No next page link detected on current search results page")
+    return None
+
+
+def gather_search_listings(start_url: str, max_properties: int = 0) -> List[Dict[str, Any]]:
+    """
+    抓取搜索结果列表，支持自动翻页直到达到最大房源数或无更多页面
+    
+    Args:
+        start_url: 搜索结果第一页URL
+        max_properties: 需要抓取的最大房源数，0表示无限制
+    """
+    aggregated: List[Dict[str, Any]] = []
+    seen_detail_urls = set()
+    visited_pages = set()
+    current_url = start_url
+    page_index = 1
+    
+    while current_url:
+        normalized_page = urllib.parse.urldefrag(current_url)[0]
+        if normalized_page in visited_pages:
+            print(f"[WARNING] Pagination loop detected for {normalized_page}, stopping.")
+            break
+        visited_pages.add(normalized_page)
+        
+        print(f"[INFO] Fetching search results page {page_index}: {current_url}")
+        html = fetch_property_html(current_url)
+        if not html:
+            print(f"[ERROR] Failed to fetch search page {page_index}, aborting pagination.")
+            break
+        
+        page_listings = extract_listings_from_search_html(html)
+        if not page_listings:
+            print(f"[WARNING] Structured data missing on page {page_index}, trying legacy parser...")
+            legacy_props = parse_properties(html)
+            page_listings = _convert_legacy_props_to_listings(legacy_props)
+        
+        if not page_listings:
+            print(f"[WARNING] No listings extracted from page {page_index}, stopping pagination.")
+            break
+        
+        new_items = 0
+        for listing in page_listings:
+            detail_url = listing.get('url')
+            if not detail_url:
+                continue
+            normalized_detail = urllib.parse.urldefrag(detail_url)[0]
+            if normalized_detail in seen_detail_urls:
+                continue
+            seen_detail_urls.add(normalized_detail)
+            aggregated.append(listing)
+            new_items += 1
+            if max_properties and len(aggregated) >= max_properties:
+                print(f"[INFO] Reached max property limit ({max_properties}), stopping pagination.")
+                return aggregated
+        
+        print(f"[INFO] Page {page_index} contributed {new_items} new listings (total {len(aggregated)}).")
+        
+        next_url = extract_next_page_url(html, current_url)
+        if not next_url:
+            break
+        
+        current_url = next_url
+        page_index += 1
+    
+    return aggregated
+
+
 def extract_listing_ldjson(html: str) -> Optional[Dict[str, Any]]:
     """从详情页HTML中提取RealEstateListing的ld+json数据"""
     if not html:
@@ -1598,6 +1741,8 @@ if __name__ == "__main__":
                         help='Output CSV filename')
     parser.add_argument('--max-per-property', type=int, default=0,
                         help='Maximum number of images per property (0 means unlimited)')
+    parser.add_argument('--max-properties', type=int, default=0,
+                        help='Maximum number of listings to scrape from the search results (0 means no limit)')
     parser.add_argument('--skip-csv', action='store_true',
                         help='Skip exporting CSV after database update')
     parser.add_argument('--skip-existing', action='store_true',
@@ -1610,6 +1755,7 @@ if __name__ == "__main__":
     url = args.url
     output_file = args.output
     max_per_property = args.max_per_property
+    max_properties = max(0, args.max_properties or 0)
     
     # Detect listing type from URL
     listing_type = detect_listing_type(url)
@@ -1625,25 +1771,11 @@ if __name__ == "__main__":
         if detail_property:
             scraped_properties.append(detail_property)
     else:
-        html = fetch_property_html(url)
-        if not html:
-            print("[ERROR] Failed to fetch HTML for search results, aborting")
+        listings = gather_search_listings(url, max_properties=max_properties)
+        if not listings:
+            print("[ERROR] Failed to extract listings from search results, aborting")
         else:
-            listings = extract_listings_from_search_html(html)
-            if not listings:
-                print("[WARNING] Failed to extract listings from search results, falling back to legacy parser")
-                listings = []
-                legacy_props = parse_properties(html)
-                for legacy in legacy_props:
-                    if legacy.get('url'):
-                        listings.append({
-                            "url": legacy.get('url'),
-                            "title": legacy.get('title'),
-                            "price_numeric": safe_int(legacy.get('price')),
-                            "description_chinese": translate_to_chinese(legacy.get('description', '')) if legacy.get('description') else None,
-                            "image": legacy.get('image')
-                        })
-            print(f"[INFO] Found {len(listings)} listings in search results")
+            print(f"[INFO] Prepared {len(listings)} listings from search results (limit={max_properties or '∞'})")
             
             # 如果启用 --skip-existing，在抓取前先检查数据库
             existing_urls = set()
@@ -1675,11 +1807,14 @@ if __name__ == "__main__":
                 if args.skip_existing and not args.force_update and detail_url in existing_urls:
                     print(f"[SKIP] Skipping existing property {index}/{len(listings)}: {detail_url}")
                     # 使用列表页信息创建基本数据
+                    description_cn = listing.get('description_chinese')
+                    if not description_cn and listing.get('description'):
+                        description_cn = translate_to_chinese(listing['description'])
                     basic_property = {
                         "title": listing.get('title'),
                         "price_numeric": listing.get('price_numeric'),
                         "price": format_price(listing.get('price_numeric'), listing_type) if listing.get('price_numeric') else None,
-                        "description_chinese": translate_to_chinese(listing.get('description', '')) if listing.get('description') else None,
+                        "description_chinese": description_cn,
                         "url": detail_url,
                         "image": listing.get('image'),
                         "image_url": listing.get('image'),
