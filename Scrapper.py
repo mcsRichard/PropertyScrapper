@@ -22,6 +22,7 @@ from datetime import datetime
 import sys
 import os
 from typing import Dict, List, Any, Optional, Tuple
+from collections import OrderedDict
 
 # 添加backend目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
@@ -377,6 +378,8 @@ def fetch_property_html(url, max_retries=3, click_full_description=False):
 
             # 等待页面加载，特别是图片
             time.sleep(random.uniform(3, 6))  # 增加等待时间确保图片加载
+            if _dismiss_zoopla_popups(driver):
+                print("[INFO] Zoopla popup dismissed after page load")
             
             # 可选：点击“Read full description”按钮
             if click_full_description:
@@ -493,6 +496,55 @@ def _click_read_full_description(driver, wait):
         time.sleep(1.5)
     else:
         print("[INFO] No 'Read full description' button was clicked (not found or already expanded)")
+
+
+def _dismiss_zoopla_popups(driver, max_attempts: int = 3) -> bool:
+    """尝试关闭Zoopla在搜索/详情页弹出的提示或dialog"""
+    close_selectors = [
+        "div[role='dialog'] button[aria-label*='Close']",
+        "div[role='dialog'] button[aria-label*='close']",
+        "div[role='dialog'] button[data-testid*='close']",
+        "div[aria-modal='true'] button[aria-label]",
+        "button[aria-label='Close']",
+        "button[aria-label='Close dialog']",
+        "button[aria-label='Close modal']",
+        "button[aria-label='Dismiss']",
+        "button[data-testid='close-button']",
+        "button[data-testid='modal-close']",
+        "button[data-testid='cookie-banner-close']",
+        "[data-testid='close-modal-button']",
+        "[class*='Modal'] button[class*='close']",
+    ]
+    
+    dismissed_any = False
+    for attempt in range(max_attempts):
+        dismissed_this_round = False
+        for selector in close_selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            except Exception:
+                continue
+            for el in elements:
+                try:
+                    if not el.is_displayed() or not el.is_enabled():
+                        continue
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+                    time.sleep(0.2)
+                    driver.execute_script("arguments[0].click();", el)
+                    print(f"[INFO] Dismissed Zoopla dialog via selector: {selector}")
+                    dismissed_any = True
+                    dismissed_this_round = True
+                    time.sleep(0.5)
+                    break
+                except (StaleElementReferenceException, ElementClickInterceptedException):
+                    continue
+                except Exception as click_err:
+                    print(f"[WARNING] Failed to close popup using selector {selector}: {click_err}")
+            if dismissed_this_round:
+                break
+        if not dismissed_this_round:
+            break
+    return dismissed_any
 
 
 def extract_full_description(html: str) -> str:
@@ -656,6 +708,55 @@ def _convert_legacy_props_to_listings(legacy_props: Optional[List[Dict[str, Any]
     return listings
 
 
+def _resolve_next_page_url(current_url: str, href: Optional[str]) -> Optional[str]:
+    """根据当前URL和href生成下一页绝对URL，保留原查询参数"""
+    if not href:
+        return None
+    href = href.strip()
+    if not href:
+        return None
+    
+    if href.startswith(('http://', 'https://')):
+        return href
+    
+    if href.startswith('?') or href.startswith('&'):
+        base_parts = urllib.parse.urlsplit(current_url)
+        params = OrderedDict()
+        for key, value in urllib.parse.parse_qsl(base_parts.query, keep_blank_values=True):
+            params[key] = value
+        relative_query = href[1:]
+        for key, value in urllib.parse.parse_qsl(relative_query, keep_blank_values=True):
+            params[key] = value
+        merged_query = urllib.parse.urlencode(list(params.items()))
+        return urllib.parse.urlunsplit((
+            base_parts.scheme,
+            base_parts.netloc,
+            base_parts.path,
+            merged_query,
+            base_parts.fragment
+        ))
+    
+    base_parts = urllib.parse.urlsplit(current_url)
+    href_parts = urllib.parse.urlsplit(href)
+    
+    path = href_parts.path or base_parts.path
+    
+    params = OrderedDict()
+    for key, value in urllib.parse.parse_qsl(base_parts.query, keep_blank_values=True):
+        params[key] = value
+    for key, value in urllib.parse.parse_qsl(href_parts.query, keep_blank_values=True):
+        params[key] = value
+    merged_query = urllib.parse.urlencode(list(params.items()))
+    
+    return urllib.parse.urlunsplit((
+        href_parts.scheme or base_parts.scheme,
+        href_parts.netloc or base_parts.netloc,
+        path,
+        merged_query,
+        href_parts.fragment or base_parts.fragment
+    ))
+
+
 def extract_next_page_url(html: str, current_url: str) -> Optional[str]:
     """从搜索结果页中提取下一页URL"""
     if not html:
@@ -678,9 +779,10 @@ def extract_next_page_url(html: str, current_url: str) -> Optional[str]:
     
     for tag in candidates:
         if tag and tag.get("href") and tag.get("aria-disabled", "").lower() != "true":
-            next_url = urllib.parse.urljoin(current_url, tag.get("href"))
-            print(f"[INFO] Detected next page link via structured tag: {next_url}")
-            return next_url
+            next_url = _resolve_next_page_url(current_url, tag.get("href"))
+            if next_url:
+                print(f"[INFO] Detected next page link via structured tag: {next_url}")
+                return next_url
     
     # 查找导航区域
     nav_candidates = soup.find_all(
@@ -691,34 +793,49 @@ def extract_next_page_url(html: str, current_url: str) -> Optional[str]:
     for nav in nav_candidates:
         anchor = nav.find("a", string=lambda text: isinstance(text, str) and "next" in text.lower())
         if anchor and anchor.get("href") and anchor.get("aria-disabled", "").lower() != "true":
-            next_url = urllib.parse.urljoin(current_url, anchor.get("href"))
-            print(f"[INFO] Detected next page link via pagination nav: {next_url}")
-            return next_url
+            next_url = _resolve_next_page_url(current_url, anchor.get("href"))
+            if next_url:
+                print(f"[INFO] Detected next page link via pagination nav: {next_url}")
+                return next_url
     
     # 最后尝试全局搜索带有“Next”文本的链接
     anchor = soup.find("a", string=lambda text: isinstance(text, str) and "next" in text.lower())
     if anchor and anchor.get("href") and anchor.get("aria-disabled", "").lower() != "true":
-        next_url = urllib.parse.urljoin(current_url, anchor.get("href"))
-        print(f"[INFO] Detected next page link via text search: {next_url}")
-        return next_url
+        next_url = _resolve_next_page_url(current_url, anchor.get("href"))
+        if next_url:
+            print(f"[INFO] Detected next page link via text search: {next_url}")
+            return next_url
     
     print("[INFO] No next page link detected on current search results page")
     return None
 
 
-def gather_search_listings(start_url: str, max_properties: int = 0) -> List[Dict[str, Any]]:
+def gather_search_listings(
+    start_url: str,
+    max_properties: int = 0,
+    start_index: int = 1,
+    end_index: int = 0
+) -> List[Dict[str, Any]]:
     """
     抓取搜索结果列表，支持自动翻页直到达到最大房源数或无更多页面
     
     Args:
         start_url: 搜索结果第一页URL
         max_properties: 需要抓取的最大房源数，0表示无限制
+        start_index: 目标区间起始序号（1-based，默认为1）
+        end_index: 目标区间结束序号（包含，0表示不限）
     """
     aggregated: List[Dict[str, Any]] = []
+    start_index = max(1, start_index or 1)
+    if end_index and end_index < start_index:
+        print(f"[WARNING] result-end ({end_index}) < result-start ({start_index}), ignoring end limit.")
+        end_index = 0
+    
     seen_detail_urls = set()
     visited_pages = set()
     current_url = start_url
     page_index = 1
+    global_index = 0
     
     while current_url:
         normalized_page = urllib.parse.urldefrag(current_url)[0]
@@ -752,10 +869,16 @@ def gather_search_listings(start_url: str, max_properties: int = 0) -> List[Dict
             if normalized_detail in seen_detail_urls:
                 continue
             seen_detail_urls.add(normalized_detail)
+            global_index += 1
+            if global_index < start_index:
+                continue
             aggregated.append(listing)
             new_items += 1
             if max_properties and len(aggregated) >= max_properties:
                 print(f"[INFO] Reached max property limit ({max_properties}), stopping pagination.")
+                return aggregated
+            if end_index and global_index >= end_index:
+                print(f"[INFO] Reached result-end limit ({end_index}), stopping pagination.")
                 return aggregated
         
         print(f"[INFO] Page {page_index} contributed {new_items} new listings (total {len(aggregated)}).")
@@ -767,6 +890,8 @@ def gather_search_listings(start_url: str, max_properties: int = 0) -> List[Dict
         current_url = next_url
         page_index += 1
     
+    if not aggregated and global_index < start_index:
+        print(f"[WARNING] result-start {start_index} exceeds available listings ({global_index}).")
     return aggregated
 
 
@@ -1743,6 +1868,10 @@ if __name__ == "__main__":
                         help='Maximum number of images per property (0 means unlimited)')
     parser.add_argument('--max-properties', type=int, default=0,
                         help='Maximum number of listings to scrape from the search results (0 means no limit)')
+    parser.add_argument('--result-start', type=int, default=1,
+                        help='1-based index for the first listing to scrape from the result set')
+    parser.add_argument('--result-end', type=int, default=0,
+                        help='1-based index for the last listing to scrape (inclusive, 0 means no upper bound)')
     parser.add_argument('--skip-csv', action='store_true',
                         help='Skip exporting CSV after database update')
     parser.add_argument('--skip-existing', action='store_true',
@@ -1756,6 +1885,8 @@ if __name__ == "__main__":
     output_file = args.output
     max_per_property = args.max_per_property
     max_properties = max(0, args.max_properties or 0)
+    result_start = max(1, args.result_start or 1)
+    result_end = max(0, args.result_end or 0)
     
     # Detect listing type from URL
     listing_type = detect_listing_type(url)
@@ -1771,11 +1902,22 @@ if __name__ == "__main__":
         if detail_property:
             scraped_properties.append(detail_property)
     else:
-        listings = gather_search_listings(url, max_properties=max_properties)
+        listings = gather_search_listings(
+            url,
+            max_properties=max_properties,
+            start_index=result_start,
+            end_index=result_end
+        )
         if not listings:
             print("[ERROR] Failed to extract listings from search results, aborting")
         else:
-            print(f"[INFO] Prepared {len(listings)} listings from search results (limit={max_properties or '∞'})")
+            if result_start == 1 and not result_end:
+                range_desc = "all"
+            elif not result_end:
+                range_desc = f"{result_start}+"
+            else:
+                range_desc = f"{result_start}-{result_end}"
+            print(f"[INFO] Prepared {len(listings)} listings from search results (range={range_desc}, limit={max_properties or '∞'})")
             
             # 如果启用 --skip-existing，在抓取前先检查数据库
             existing_urls = set()
