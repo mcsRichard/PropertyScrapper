@@ -32,6 +32,9 @@
           今日联系剩余 {{contactStats ? contactStats.remaining : 5}} / {{contactStats ? contactStats.limit : 5}}
         </text>
       </view>
+      <view class="logout-btn" bindtap="handleLogoutTap">
+        <text>退出</text>
+      </view>
     </view>
     <button wx:else class="login-btn-mini" bindtap="handleLoginTap" loading="{{loginInProgress}}">
       微信登录

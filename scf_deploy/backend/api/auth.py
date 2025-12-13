@@ -104,3 +104,12 @@ def wechat_login():
             "error": f"Internal Error: {str(e)}",
             "traceback": traceback.format_exc()
         }), 500
+
+
+@auth_bp.route("/logout", methods=["POST"])
+def logout():
+    """退出登录"""
+    return jsonify({
+        "success": True,
+        "message": "Logged out successfully"
+    })

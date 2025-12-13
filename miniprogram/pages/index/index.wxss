@@ -149,6 +149,7 @@
   display: flex;
   flex-direction: column;
   color: #fff;
+  flex: 1;
 }
 
 .user-name {
@@ -160,6 +161,19 @@
   font-size: 24rpx;
   opacity: 0.8;
   margin-top: 6rpx;
+}
+
+.logout-btn {
+  padding: 10rpx 20rpx;
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1rpx solid rgba(255, 255, 255, 0.4);
+  font-size: 24rpx;
+  color: #fff;
+}
+
+.logout-btn:active {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .login-btn-mini {

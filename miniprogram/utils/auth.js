@@ -102,9 +102,19 @@ function requestUserProfile() {
   })
 }
 
+
+function logout() {
+  const app = getApp()
+  if (app && typeof app.clearAuthData === 'function') {
+    app.clearAuthData()
+  }
+  return Promise.resolve()
+}
+
 module.exports = {
   loginWithWeChat,
-  fetchUserProfile
+  fetchUserProfile,
+  logout
 }
 
 

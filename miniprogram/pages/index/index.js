@@ -41,11 +41,11 @@ Page({
       { label: '出售', value: 'for_sale' },
       { label: '出租', value: 'for_rent' }
     ],
-      currentBedroom: '不限',
-      currentType: '不限',
-      currentPrice: '不限',
-      priceRange: [0, 4000], // 默认出租房产的月租金范围
-      priceDisplay: '不限',
+    currentBedroom: '不限',
+    currentType: '不限',
+    currentPrice: '不限',
+    priceRange: [0, 4000], // 默认出租房产的月租金范围
+    priceDisplay: '不限',
     pricePresetSelected: -1,
     // 排序选项
     sortOptions: [
@@ -120,9 +120,9 @@ Page({
    */
   loadProperties(refresh = false) {
     if (this.data.loading) return
-    
+
     this.setData({ loading: true })
-    
+
     // 构建筛选参数
     const filters = {
       minPrice: this.data.filters.minPrice || null,
@@ -131,22 +131,22 @@ Page({
       bedrooms: this.data.filters.bedrooms || null,
       listingType: this.data.listingType || 'for_sale'
     }
-    
+
     // 添加排序参数
     const currentSortOption = this.data.sortOptions.find(opt => opt.label === this.data.currentSort)
     if (currentSortOption && currentSortOption.sortBy) {
       filters.sortBy = currentSortOption.sortBy
       filters.sortOrder = currentSortOption.sortOrder
     }
-    
+
     console.log('筛选参数:', filters)
     console.log('当前筛选状态:', this.data.filters)
-    
+
     api.getProperties(this.data.page, this.data.limit, filters)
       .then(res => {
         if (res.success && res.data) {
           const properties = refresh ? res.data.properties : this.data.properties.concat(res.data.properties)
-          
+
           this.setData({
             properties: properties,
             total: res.data.pagination.total,
@@ -243,6 +243,25 @@ Page({
       })
   },
 
+  handleLogoutTap() {
+    wx.showModal({
+      title: '提示',
+      content: '确定要退出登录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          auth.logout()
+            .then(() => {
+              wx.showToast({
+                title: '已退出',
+                icon: 'none'
+              })
+              this.syncUserState()
+            })
+        }
+      }
+    })
+  },
+
   /**
    * 筛选房产
    */
@@ -311,7 +330,7 @@ Page({
   clearFilter() {
     const listingType = this.data.listingType
     const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
-    
+
     this.setData({
       filters: {
         minPrice: '',
@@ -342,7 +361,7 @@ Page({
     const index = e.detail.value
     const sortOption = this.data.sortOptions[index]
     console.log('选择排序:', sortOption)
-    
+
     this.setData({
       currentSort: sortOption.label,
       page: 1,
@@ -351,7 +370,7 @@ Page({
     })
     this.loadProperties(true)
   },
-  
+
   /**
    * 切换筛选器展开/收起
    */
@@ -434,50 +453,50 @@ Page({
       loading: true
     })
 
-              api.aiSearchProperties(this.data.searchKeyword, this.data.listingType, this.data.page, this.data.limit)
-                .then(res => {
-                  wx.hideLoading()
-                  
-                  // 输出调试信息到控制台
-                  if (res.data && res.data.debug_info) {
-                    console.log('[AI-SEARCH] 调试信息:', res.data.debug_info)
-                    console.log('[AI-SEARCH] Location类型:', res.data.debug_info.location_type)
-                    console.log('[AI-SEARCH] 搜索Location:', res.data.debug_info.search_location)
-                    console.log('[AI-SEARCH] SQL提示:', res.data.debug_info.sql_hint)
-                    console.log('[AI-SEARCH] 找到房产数:', res.data.debug_info.total_found)
-                    
-                    // 如果没有找到结果，显示更详细的提示
-                    if (res.data.debug_info.total_found === 0) {
-                      console.warn('[AI-SEARCH] ⚠️ 未找到房产')
-                      console.warn('  - 查询参数:', res.data.debug_info.query_params)
-                      console.warn('  - 所有筛选条件:', res.data.debug_info.all_filters)
-                      if (res.data.debug_info.sql_hint) {
-                        console.warn('  - SQL查询:', res.data.debug_info.sql_hint)
-                      }
-                      
-                      // 显示诊断信息
-                      if (res.data.debug_info.diagnosis && Object.keys(res.data.debug_info.diagnosis).length > 0) {
-                        console.warn('  - 📊 数据库诊断信息:')
-                        console.warn(`     - N10房产总数（不限类型）: ${res.data.debug_info.diagnosis.location_count_all_types}`)
-                        console.warn(`     - ${res.data.debug_info.query_params.listing_type}房产总数（不限location）: ${res.data.debug_info.diagnosis.listing_type_count_all_locations}`)
-                        console.warn(`     - 同时满足两个条件的: ${res.data.debug_info.diagnosis.combined_count}`)
-                        console.warn(`     - 💡 建议: ${res.data.debug_info.diagnosis.suggestion}`)
-                      }
-                    }
-                  }
-                  
-                  if (res.success && res.data) {
-                    const filters = res.data.filters || {}
-                    const filtersText = this.formatAIFilters(filters)
-                    
-                    this.setData({
-                      properties: res.data.properties,
-                      total: res.data.pagination.total,
-                      hasMore: res.data.pagination.page < res.data.pagination.pages,
-                      aiFilters: filters,
-                      aiFiltersText: filtersText,
-                      loading: false
-                    })
+    api.aiSearchProperties(this.data.searchKeyword, this.data.listingType, this.data.page, this.data.limit)
+      .then(res => {
+        wx.hideLoading()
+
+        // 输出调试信息到控制台
+        if (res.data && res.data.debug_info) {
+          console.log('[AI-SEARCH] 调试信息:', res.data.debug_info)
+          console.log('[AI-SEARCH] Location类型:', res.data.debug_info.location_type)
+          console.log('[AI-SEARCH] 搜索Location:', res.data.debug_info.search_location)
+          console.log('[AI-SEARCH] SQL提示:', res.data.debug_info.sql_hint)
+          console.log('[AI-SEARCH] 找到房产数:', res.data.debug_info.total_found)
+
+          // 如果没有找到结果，显示更详细的提示
+          if (res.data.debug_info.total_found === 0) {
+            console.warn('[AI-SEARCH] ⚠️ 未找到房产')
+            console.warn('  - 查询参数:', res.data.debug_info.query_params)
+            console.warn('  - 所有筛选条件:', res.data.debug_info.all_filters)
+            if (res.data.debug_info.sql_hint) {
+              console.warn('  - SQL查询:', res.data.debug_info.sql_hint)
+            }
+
+            // 显示诊断信息
+            if (res.data.debug_info.diagnosis && Object.keys(res.data.debug_info.diagnosis).length > 0) {
+              console.warn('  - 📊 数据库诊断信息:')
+              console.warn(`     - N10房产总数（不限类型）: ${res.data.debug_info.diagnosis.location_count_all_types}`)
+              console.warn(`     - ${res.data.debug_info.query_params.listing_type}房产总数（不限location）: ${res.data.debug_info.diagnosis.listing_type_count_all_locations}`)
+              console.warn(`     - 同时满足两个条件的: ${res.data.debug_info.diagnosis.combined_count}`)
+              console.warn(`     - 💡 建议: ${res.data.debug_info.diagnosis.suggestion}`)
+            }
+          }
+        }
+
+        if (res.success && res.data) {
+          const filters = res.data.filters || {}
+          const filtersText = this.formatAIFilters(filters)
+
+          this.setData({
+            properties: res.data.properties,
+            total: res.data.pagination.total,
+            hasMore: res.data.pagination.page < res.data.pagination.pages,
+            aiFilters: filters,
+            aiFiltersText: filtersText,
+            loading: false
+          })
 
           // 同步更新筛选状态，方便用户查看和调整
           // 注意：AI返回的是snake_case，需要转换为camelCase
@@ -487,12 +506,12 @@ Page({
             propertyType: filters.property_type || '',
             bedrooms: filters.bedrooms || ''
           }
-          
+
           // 更新价格显示
           let currentPrice = '不限'
           if (newFilters.minPrice || newFilters.maxPrice) {
             // 查找匹配的价格选项
-            const matchedOption = this.data.priceOptions.find(opt => 
+            const matchedOption = this.data.priceOptions.find(opt =>
               opt.minPrice === newFilters.minPrice && opt.maxPrice === newFilters.maxPrice
             )
             if (matchedOption) {
@@ -504,14 +523,14 @@ Page({
               currentPrice = this.formatPriceRange([newFilters.minPrice || 0, newFilters.maxPrice || defaultMax])
             }
           }
-          
+
           this.setData({
             filters: newFilters,
             currentPrice: currentPrice,
             priceDisplay: currentPrice,
             listingType: filters.listing_type || this.data.listingType
           })
-          
+
           // 如果listing_type改变了，更新价格预设
           if (filters.listing_type && filters.listing_type !== this.data.listingType) {
             this.updatePricePresets()
@@ -535,19 +554,19 @@ Page({
    */
   formatAIFilters(filters) {
     const parts = []
-    
+
     if (filters.listing_type) {
       parts.push(filters.listing_type === 'for_sale' ? '出售' : '出租')
     }
-    
+
     if (filters.location) {
       parts.push(filters.location + '附近')
     }
-    
+
     if (filters.bedrooms) {
       parts.push(filters.bedrooms + '室')
     }
-    
+
     if (filters.property_type) {
       const typeMap = {
         'flat': '公寓',
@@ -557,7 +576,7 @@ Page({
       }
       parts.push(typeMap[filters.property_type] || filters.property_type)
     }
-    
+
     if (filters.min_price || filters.max_price) {
       let priceText = ''
       if (filters.min_price && filters.max_price) {
@@ -583,7 +602,7 @@ Page({
         parts.push(priceText)
       }
     }
-    
+
     return parts.length > 0 ? parts.join(' · ') : '全部'
   },
 
@@ -594,9 +613,9 @@ Page({
     const listingType = this.data.listingType
     let presets = []
     let priceOptions = [{ label: '不限', value: '', minPrice: null, maxPrice: null }]
-    
+
     console.log('[PRICE] 更新价格预设, listingType:', listingType)
-    
+
     if (listingType === 'for_sale') {
       // 出售：使用总价预设
       presets = this.data.forSalePricePresets
@@ -636,7 +655,7 @@ Page({
         pricePresetSelected: -1
       })
     }
-    
+
     console.log('[PRICE] 最终priceOptions:', this.data.priceOptions)
   },
 
@@ -669,16 +688,16 @@ Page({
     console.log('[PRICE] 选择索引:', index)
     console.log('[PRICE] 当前priceOptions:', this.data.priceOptions)
     console.log('[PRICE] priceOptions长度:', this.data.priceOptions ? this.data.priceOptions.length : 0)
-    
+
     if (!this.data.priceOptions || this.data.priceOptions.length === 0) {
       console.error('[PRICE] priceOptions为空，重新初始化')
       this.updatePricePresets()
       return
     }
-    
+
     const priceOption = this.data.priceOptions[index]
     console.log('选择价格范围:', priceOption)
-    
+
     const filters = this.data.filters
     if (priceOption.minPrice !== null && priceOption.maxPrice !== null) {
       filters.minPrice = priceOption.minPrice
@@ -688,7 +707,7 @@ Page({
       filters.minPrice = ''
       filters.maxPrice = ''
     }
-    
+
     this.setData({
       currentPrice: priceOption.label,
       filters: filters,
@@ -752,14 +771,14 @@ Page({
     const minPrice = priceRange[0] || 0
     const maxPrice = priceRange[1]
     const listingType = this.data.listingType
-    
+
     // 根据类型设置默认最大值
     const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
-    
+
     if (minPrice === 0 && maxPrice >= defaultMax) {
       return '不限'
     }
-    
+
     if (listingType === 'for_sale') {
       // 出售房产：用"万"表示（总价）
       if (minPrice === 0 && maxPrice < defaultMax) {
@@ -789,12 +808,12 @@ Page({
     const filters = this.data.filters
     filters.minPrice = this.data.priceRange[0]
     filters.maxPrice = this.data.priceRange[1]
-    
+
     // 如果选择了预设，就使用预设的显示，否则使用格式化的显示
-    let display = this.data.pricePresetSelected >= 0 ? 
-      this.data.pricePresets[this.data.pricePresetSelected].label : 
+    let display = this.data.pricePresetSelected >= 0 ?
+      this.data.pricePresets[this.data.pricePresetSelected].label :
       this.data.priceDisplay
-    
+
     this.setData({
       showFilter: false,
       filters: filters,
@@ -819,7 +838,7 @@ Page({
       const range = [currentFilter.minPrice || 0, currentFilter.maxPrice || defaultMax]
       display = this.formatPriceRange(range)
     }
-    
+
     this.setData({
       showFilter: false,
       priceRange: [currentFilter.minPrice || 0, currentFilter.maxPrice || defaultMax],
