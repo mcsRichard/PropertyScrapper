@@ -1,5 +1,6 @@
 //pages/detail/detail.js
 const api = require('../../utils/api.js')
+const auth = require('../../utils/auth.js')
 
 Page({
   data: {
@@ -9,11 +10,16 @@ Page({
     customerService: {
       wechatId: '',
       qrUrl: ''
-    }
+    },
+    isLoggedIn: false,
+    userInfo: null,
+    contactStats: null,
+    contactLoading: false
   },
 
   onLoad(options) {
     this.setCustomerServiceInfo()
+    this.syncUserState()
     if (options.id) {
       this.loadPropertyDetail(options.id)
     } else {
@@ -22,6 +28,10 @@ Page({
         icon: 'none'
       })
     }
+  },
+
+  onShow() {
+    this.syncUserState(true)
   },
 
   /**
@@ -37,6 +47,79 @@ Page({
         qrUrl
       }
     })
+  },
+
+  syncUserState(needRemoteRefresh = false) {
+    const app = getApp()
+    let userInfo = app?.globalData?.userInfo || null
+    let contactStats = app?.globalData?.contactStats || null
+    let token = app?.globalData?.authToken || null
+
+    try {
+      if (!userInfo) {
+        userInfo = wx.getStorageSync('userInfo')
+      }
+      if (!contactStats) {
+        contactStats = wx.getStorageSync('contactStats')
+      }
+      if (!token) {
+        token = wx.getStorageSync('authToken')
+      }
+    } catch (err) {
+      console.warn('读取用户信息失败', err)
+    }
+
+    this.setData({
+      isLoggedIn: !!token,
+      userInfo: userInfo || null,
+      contactStats: contactStats || null
+    })
+
+    if (needRemoteRefresh && token) {
+      auth.fetchUserProfile()
+        .then(() => {
+          const refreshedStats = getApp()?.globalData?.contactStats
+          const refreshedUser = getApp()?.globalData?.userInfo
+          this.setData({
+            userInfo: refreshedUser || userInfo || null,
+            contactStats: refreshedStats || contactStats || null
+          })
+        })
+        .catch((err) => {
+          console.log('刷新用户信息失败', err)
+        })
+    }
+  },
+
+  updateContactStats(stats) {
+    const app = getApp()
+    if (app && typeof app.updateContactStats === 'function') {
+      app.updateContactStats(stats)
+    }
+    this.setData({
+      contactStats: stats
+    })
+  },
+
+  onLoginTap() {
+    if (this.data.contactLoading) {
+      return
+    }
+    auth.loginWithWeChat()
+      .then(() => {
+        wx.showToast({
+          title: '登录成功',
+          icon: 'success'
+        })
+        this.syncUserState()
+      })
+      .catch((err) => {
+        console.error('登录失败', err)
+        wx.showToast({
+          title: '登录失败，请重试',
+          icon: 'none'
+        })
+      })
   },
 
   /**
@@ -141,6 +224,101 @@ Page({
         })
         this.setData({ loading: false })
       })
+  },
+
+  handleContactAgent() {
+    if (this.data.contactLoading) {
+      return
+    }
+    if (!this.data.property || !this.data.property.id) {
+      wx.showToast({
+        title: '房源信息未加载完成',
+        icon: 'none'
+      })
+      return
+    }
+    if (!this.data.property.url) {
+      wx.showToast({
+        title: '暂无原始链接',
+        icon: 'none'
+      })
+      return
+    }
+    if (!this.data.isLoggedIn) {
+      wx.showToast({
+        title: '请先登录',
+        icon: 'none'
+      })
+      this.onLoginTap()
+      return
+    }
+    if (this.data.contactStats && this.data.contactStats.remaining <= 0) {
+      wx.showToast({
+        title: '今日联系次数已用完',
+        icon: 'none'
+      })
+      return
+    }
+
+    this.setData({ contactLoading: true })
+    api.requestContactLink(this.data.property.id)
+      .then((res) => {
+        if (res.success && res.data) {
+          if (res.data.contact_stats) {
+            this.updateContactStats(res.data.contact_stats)
+          }
+          if (res.data.contact_url) {
+            this.openContactLink(res.data.contact_url)
+          } else {
+            wx.showToast({
+              title: '暂无原始链接',
+              icon: 'none'
+            })
+          }
+        } else {
+          wx.showToast({
+            title: res.error || '获取链接失败',
+            icon: 'none'
+          })
+        }
+      })
+      .catch((err) => {
+        console.error('获取联系链接失败', err)
+        const message = (err && err.error) ? err.error : '获取链接失败'
+        wx.showToast({
+          title: message,
+          icon: 'none'
+        })
+      })
+      .finally(() => {
+        this.setData({ contactLoading: false })
+      })
+  },
+
+  openContactLink(targetUrl) {
+    if (!targetUrl) {
+      wx.showToast({
+        title: '暂无原始链接',
+        icon: 'none'
+      })
+      return
+    }
+    const encodedUrl = encodeURIComponent(targetUrl)
+    wx.navigateTo({
+      url: `/pages/webview/webview?url=${encodedUrl}`,
+      fail: () => {
+        wx.setClipboardData({
+          data: targetUrl,
+          success: () => {
+            wx.showModal({
+              title: '已复制链接',
+              content: '系统暂无法直接打开该网页，链接已复制，可在浏览器中打开。',
+              showCancel: false
+            })
+          }
+        })
+      }
+    })
   },
 
   /**

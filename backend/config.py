@@ -20,6 +20,8 @@ class Config:
     API_HOST = os.getenv('API_HOST', '0.0.0.0')
     API_PORT = int(os.getenv('API_PORT', 5000))
     DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+    SECRET_KEY = os.getenv('SECRET_KEY', 'property-scrapper-secret')
+    AUTH_TOKEN_EXPIRES = int(os.getenv('AUTH_TOKEN_EXPIRES', 60 * 60 * 24 * 7))
     
     # 分页配置
     DEFAULT_PAGE_SIZE = 20
@@ -44,3 +46,10 @@ class Config:
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')  # OpenAI API密钥
     OPENAI_API_BASE = os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')  # OpenAI API地址
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')  # OpenAI模型名称
+
+    # 微信小程序配置
+    WECHAT_APP_ID = os.getenv('WECHAT_APP_ID', 'wx91bb9f22ea677e19')
+    WECHAT_APP_SECRET = os.getenv('WECHAT_APP_SECRET', '484b7a57955346628fd67dfd66daaf7d')
+
+    # 用户功能配置
+    DAILY_CONTACT_LIMIT = int(os.getenv('DAILY_CONTACT_LIMIT', 5))

@@ -1,23 +1,60 @@
 //utils/api.js
-const app = getApp()
+function getAppInstance() {
+  try {
+    return getApp()
+  } catch (err) {
+    return null
+  }
+}
+
+function getAuthToken() {
+  const app = getAppInstance()
+  if (app && app.globalData && app.globalData.authToken) {
+    return app.globalData.authToken
+  }
+  try {
+    return wx.getStorageSync('authToken')
+  } catch (err) {
+    console.warn('读取本地token失败', err)
+    return ''
+  }
+}
 
 /**
  * 请求封装
  */
 function request(url, method = 'GET', data = {}) {
   return new Promise((resolve, reject) => {
-    const apiUrl = app.globalData.apiBaseUrl + url
+    const app = getAppInstance()
+    const baseUrl = app?.globalData?.apiBaseUrl || ''
+    const apiUrl = `${baseUrl}${url}`
+    const headers = {
+      'content-type': 'application/json'
+    }
+    const token = getAuthToken()
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
     
     wx.request({
       url: apiUrl,
       method: method,
       data: data,
-      header: {
-        'content-type': 'application/json'
-      },
+      header: headers,
       success: (res) => {
         if (res.statusCode === 200) {
           resolve(res.data)
+          return
+        }
+        if (res.statusCode === 401) {
+          if (app && typeof app.clearAuthData === 'function') {
+            app.clearAuthData()
+          }
+          wx.showToast({
+            title: (res.data && res.data.error) || '请先登录',
+            icon: 'none'
+          })
+          reject(res.data)
         } else {
           reject(res.data)
         }
@@ -97,9 +134,29 @@ function aiSearchProperties(query, listingType = 'for_rent', page = 1, limit = 2
   })
 }
 
+function login(code, userInfo = {}) {
+  return request('/api/auth/login', 'POST', {
+    code,
+    user_info: userInfo
+  })
+}
+
+function getCurrentUser() {
+  return request('/api/users/me', 'GET')
+}
+
+function requestContactLink(propertyId) {
+  return request('/api/users/contact-link', 'POST', {
+    property_id: propertyId
+  })
+}
+
 module.exports = {
   getProperties,
   getPropertyDetail,
   searchProperties,
-  aiSearchProperties
+  aiSearchProperties,
+  login,
+  getCurrentUser,
+  requestContactLink
 }

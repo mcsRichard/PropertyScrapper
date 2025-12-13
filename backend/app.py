@@ -9,17 +9,22 @@ from config import Config
 from models.database import create_tables
 from api.properties import properties_bp
 from api.admin import admin_bp
+from api.auth import auth_bp
+from api.users import users_bp
 
 def create_app():
     """创建Flask应用"""
     app = Flask(__name__)
-    
+    app.config['SECRET_KEY'] = Config.SECRET_KEY
+
     # 配置CORS
     CORS(app, origins=['*'])
     
     # 注册蓝图
     app.register_blueprint(properties_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(users_bp)
     
     # 健康检查接口
     @app.route('/health', methods=['GET'])

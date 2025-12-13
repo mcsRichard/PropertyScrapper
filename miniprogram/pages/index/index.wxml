@@ -14,6 +14,29 @@
     <view class="ai-badge">
       <text class="ai-badge-text">AI Powered</text>
     </view>
+  <view class="user-status">
+    <view wx:if="{{isLoggedIn}}" class="user-info">
+      <view class="user-avatar-wrapper">
+        <image 
+          wx:if="{{userInfo && (userInfo.avatarUrl || userInfo.avatar_url)}}" 
+          class="user-avatar" 
+          src="{{userInfo.avatarUrl || userInfo.avatar_url}}" 
+          mode="aspectFill" />
+        <view wx:else class="avatar-placeholder">😊</view>
+      </view>
+      <view class="user-text">
+        <text class="user-name">
+          {{userInfo && (userInfo.nickName || userInfo.nickname) ? (userInfo.nickName || userInfo.nickname) : '已登录'}}
+        </text>
+        <text class="user-quota">
+          今日联系剩余 {{contactStats ? contactStats.remaining : 5}} / {{contactStats ? contactStats.limit : 5}}
+        </text>
+      </view>
+    </view>
+    <button wx:else class="login-btn-mini" bindtap="handleLoginTap" loading="{{loginInProgress}}">
+      微信登录
+    </button>
+  </view>
   </view>
   
   <!-- AI对话搜索栏 - 突出显示 -->

@@ -81,6 +81,39 @@ class Location(Base):
     postcode = Column(String(20), index=True)
     coordinates = Column(String(50))  # lat,lng
 
+class User(Base):
+    """微信用户"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    openid = Column(String(64), unique=True, nullable=False, index=True)
+    unionid = Column(String(64), unique=True)
+    session_key = Column(String(128))
+    nickname = Column(String(100))
+    avatar_url = Column(String(500))
+    country = Column(String(50))
+    province = Column(String(50))
+    city = Column(String(50))
+    gender = Column(Integer)
+    language = Column(String(30))
+    last_login_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class UserContactLog(Base):
+    """用户联系中介记录"""
+    __tablename__ = "user_contact_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False, index=True)
+    property_url = Column(String(500))
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index('idx_user_contact_date', 'user_id', 'created_at'),
+    )
+
 def create_tables():
     """创建所有表"""
     Base.metadata.create_all(bind=engine)

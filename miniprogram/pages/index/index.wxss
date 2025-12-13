@@ -104,6 +104,79 @@
   letter-spacing: 1rpx;
 }
 
+.user-status {
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 20rpx;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  width: 100%;
+}
+
+.user-avatar-wrapper {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2rpx solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-avatar {
+  width: 100%;
+  height: 100%;
+}
+
+.avatar-placeholder {
+  font-size: 36rpx;
+  color: #fff;
+}
+
+.user-text {
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+}
+
+.user-name {
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.user-quota {
+  font-size: 24rpx;
+  opacity: 0.8;
+  margin-top: 6rpx;
+}
+
+.login-btn-mini {
+  flex: 1;
+  font-size: 26rpx;
+  color: #012169;
+  background: #fff;
+  border-radius: 30rpx;
+  padding: 0 24rpx;
+  height: 70rpx;
+  line-height: 70rpx;
+}
+
+.login-btn-mini::after {
+  border: none;
+}
+
 /* AI搜索区域 - 突出显示 */
 .ai-search-section {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 246, 240, 0.9) 100%);

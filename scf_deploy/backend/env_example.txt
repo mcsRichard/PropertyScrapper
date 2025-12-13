@@ -34,3 +34,8 @@ OPENAI_API_BASE=https://api.openai.com/v1  # 默认值
 OPENAI_MODEL=gpt-4o-mini  # 默认值
 
 # 注意：如果未配置任何API密钥，将使用正则表达式作为备用方案（准确度较低）
+
+# 微信小程序配置（必须配置，否则无法登录）
+WECHAT_APP_ID=your-wechat-appid
+WECHAT_APP_SECRET=your-wechat-appsecret
+AUTH_TOKEN_EXPIRES=86400

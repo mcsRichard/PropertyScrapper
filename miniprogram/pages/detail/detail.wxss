@@ -121,6 +121,68 @@
   border-radius: 20rpx;
 }
 
+.contact-card {
+  border: 2rpx solid rgba(200, 16, 46, 0.1);
+  box-shadow: 0 8rpx 24rpx rgba(1, 33, 105, 0.08);
+}
+
+.contact-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.contact-title .quota {
+  font-size: 26rpx;
+  color: #666;
+}
+
+.contact-btn {
+  width: 100%;
+  height: 90rpx;
+  border-radius: 45rpx;
+  background: linear-gradient(135deg, #C8102E 0%, #012169 100%);
+  color: #fff;
+  font-size: 30rpx;
+  margin-top: 20rpx;
+  line-height: 90rpx;
+}
+
+.contact-btn::after {
+  border: none;
+}
+
+.contact-btn[disabled] {
+  background: #ccc;
+  color: #666;
+}
+
+.contact-tip {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #999;
+}
+
+.contact-login {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.contact-login-btn {
+  width: 100%;
+  height: 90rpx;
+  border-radius: 45rpx;
+  background: #fff;
+  color: #C8102E;
+  border: 2rpx solid #C8102E;
+  line-height: 88rpx;
+}
+
+.contact-login-btn::after {
+  border: none;
+}
+
 .detail-title {
   font-size: 36rpx;
   font-weight: bold;

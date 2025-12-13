@@ -79,6 +79,30 @@
       <view class="description-text">{{property.description_chinese}}</view>
     </view>
 
+    <!-- 联系中介 -->
+    <view class="detail-section contact-card">
+      <view class="section-title contact-title">
+        联系中介
+        <text class="quota" wx:if="{{isLoggedIn}}">
+          今日剩余 {{contactStats ? contactStats.remaining : 0}} / {{contactStats ? contactStats.limit : 5}}
+        </text>
+      </view>
+      <view wx:if="{{isLoggedIn}}">
+        <button 
+          class="contact-btn" 
+          bindtap="handleContactAgent" 
+          loading="{{contactLoading}}"
+          disabled="{{contactLoading || (contactStats && contactStats.remaining <= 0)}}">
+          {{contactStats && contactStats.remaining <= 0 ? '今日额度已用完' : '联系中介'}}
+        </button>
+        <view class="contact-tip">点击后将打开房源原始网页，可直接联系中介/房东</view>
+      </view>
+      <view wx:else class="contact-login">
+        <text class="login-tip">登录后可直接打开房源原始链接联系中介</text>
+        <button class="contact-login-btn" bindtap="onLoginTap">微信登录</button>
+      </view>
+    </view>
+
     <!-- 客服微信二维码 -->
     <view class="customer-service-card" wx:if="{{customerService.wechatId || customerService.qrUrl}}">
       <view class="card-title">客服微信</view>

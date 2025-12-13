@@ -1,0 +1,10 @@
+<view class="webview-container">
+  <web-view wx:if="{{targetUrl}}" src="{{targetUrl}}" />
+  <view wx:else class="webview-placeholder">
+    正在加载原始房源链接...
+  </view>
+</view>
+
+
+
+

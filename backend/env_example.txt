@@ -33,4 +33,13 @@ OPENAI_API_KEY=your-openai-api-key-here  # 可选：OpenAI API密钥
 OPENAI_API_BASE=https://api.openai.com/v1  # 默认值
 OPENAI_MODEL=gpt-4o-mini  # 默认值
 
+# 微信小程序用户登录
+WECHAT_APP_ID=your-miniapp-appid
+WECHAT_APP_SECRET=your-miniapp-secret
+
+# 用户功能配置
+SECRET_KEY=property-scrapper-secret
+AUTH_TOKEN_EXPIRES=604800
+DAILY_CONTACT_LIMIT=5
+
 # 注意：如果未配置任何API密钥，将使用正则表达式作为备用方案（准确度较低）

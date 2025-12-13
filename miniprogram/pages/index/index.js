@@ -1,5 +1,6 @@
 //pages/index/index.js
 const api = require('../../utils/api.js')
+const auth = require('../../utils/auth.js')
 
 Page({
   data: {
@@ -73,13 +74,18 @@ Page({
     ],
     pricePresets: [], // 将根据listingType动态设置
     priceOptions: [{ label: '不限', value: '', minPrice: null, maxPrice: null }], // picker选项（包含"不限"），初始化为默认值
-    currentPrice: '不限' // 当前选择的价格范围
+    currentPrice: '不限', // 当前选择的价格范围
+    isLoggedIn: false,
+    userInfo: null,
+    contactStats: null,
+    loginInProgress: false
   },
 
   onLoad() {
     // 初始化价格预设
     this.updatePricePresets()
     this.loadProperties()
+    this.syncUserState()
   },
 
   onReady() {
@@ -91,7 +97,7 @@ Page({
   },
 
   onShow() {
-    // 页面显示
+    this.syncUserState(true)
   },
 
   onReachBottom() {
@@ -106,6 +112,7 @@ Page({
     this.data.page = 1
     this.data.hasMore = true
     this.loadProperties(true)
+    this.syncUserState(true)
   },
 
   /**
@@ -167,6 +174,73 @@ Page({
   loadMore() {
     this.data.page++
     this.loadProperties()
+  },
+
+  syncUserState(needRemoteRefresh = false) {
+    const app = getApp()
+    let userInfo = app?.globalData?.userInfo || null
+    let contactStats = app?.globalData?.contactStats || null
+    let token = app?.globalData?.authToken || null
+
+    try {
+      if (!userInfo) {
+        userInfo = wx.getStorageSync('userInfo')
+      }
+      if (!contactStats) {
+        contactStats = wx.getStorageSync('contactStats')
+      }
+      if (!token) {
+        token = wx.getStorageSync('authToken')
+      }
+    } catch (err) {
+      console.warn('读取登录状态失败', err)
+    }
+
+    this.setData({
+      isLoggedIn: !!token,
+      userInfo: userInfo || null,
+      contactStats: contactStats || null
+    })
+
+    if (needRemoteRefresh && token) {
+      auth.fetchUserProfile()
+        .then(() => {
+          const refreshedStats = getApp()?.globalData?.contactStats
+          const refreshedUser = getApp()?.globalData?.userInfo
+          this.setData({
+            userInfo: refreshedUser || userInfo || null,
+            contactStats: refreshedStats || contactStats || null
+          })
+        })
+        .catch((err) => {
+          console.log('刷新用户信息失败', err)
+        })
+    }
+  },
+
+  handleLoginTap() {
+    if (this.data.loginInProgress) {
+      return
+    }
+    this.setData({ loginInProgress: true })
+    auth.loginWithWeChat()
+      .then(() => {
+        wx.showToast({
+          title: '登录成功',
+          icon: 'success'
+        })
+        this.syncUserState()
+      })
+      .catch((err) => {
+        console.error('登录失败', err)
+        wx.showToast({
+          title: '登录失败，请重试',
+          icon: 'none'
+        })
+      })
+      .finally(() => {
+        this.setData({ loginInProgress: false })
+      })
   },
 
   /**

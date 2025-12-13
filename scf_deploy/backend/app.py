@@ -9,6 +9,8 @@ from config import Config
 from models.database import create_tables
 from api.properties import properties_bp
 from api.admin import admin_bp
+from api.auth import auth_bp
+from api.user import users_bp
 
 def create_app():
     """创建Flask应用"""
@@ -20,6 +22,8 @@ def create_app():
     # 注册蓝图
     app.register_blueprint(properties_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(users_bp)
     
     # 健康检查接口
     @app.route('/health', methods=['GET'])
