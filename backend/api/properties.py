@@ -340,6 +340,12 @@ def ai_search_properties():
                 filters['location'] = cleaned_query
         
         # ========== 调试信息：显示AI解析结果 ==========
+        radius_meters = filters.get('radius_meters')
+        if radius_meters is not None:
+            try:
+                radius_meters = int(radius_meters)
+            except (TypeError, ValueError):
+                radius_meters = None
         print("[AI-SEARCH] AI解析结果:")
         print(f"  - listing_type: {filters.get('listing_type')}")
         print(f"  - bedrooms: {filters.get('bedrooms')}")
@@ -347,34 +353,34 @@ def ai_search_properties():
         print(f"  - min_price: {filters.get('min_price')}")
         print(f"  - max_price: {filters.get('max_price')}")
         print(f"  - location (原始): {filters.get('location')}")
+        print(f"  - radius_meters: {radius_meters}")
         
-        # 处理location：将地名转换为邮编（支持动态API查询）
+        # 处理location：将地名转换为邮编（支持动态API查询）。若有 radius_meters，优先用更窄邮编（如 UCL+500m -> WC1E）
         original_location = filters.get('location')
         if original_location:
-            print(f"[AI-SEARCH] 尝试将地名转换为邮编: {original_location}")
+            print(f"[AI-SEARCH] 尝试将地名转换为邮编: {original_location}" + (f"（半径 {radius_meters}m）" if radius_meters else ""))
             
-            # 清理location（去除空格和标点）
             cleaned_location = original_location.strip().replace(',', '').replace('.', '')
             
-            # 首先检查是否是邮编格式，如果是则直接使用
             if LocationMapper.is_postcode_prefix(cleaned_location):
                 print(f"[AI-SEARCH] ✅ 检测到邮编格式，直接使用: {cleaned_location}")
-                # 邮编直接使用，不需要转换
                 filters['location'] = cleaned_location
             else:
-                # 使用动态API查询，如果失败会自动降级到静态字典或原始location
                 print(f"[AI-SEARCH] 尝试映射地名: {original_location}")
-                mapped_location = LocationMapper.location_to_search_term(original_location, use_api=True)
+                mapped_location = LocationMapper.location_to_search_term(
+                    original_location, use_api=True, radius_meters=radius_meters
+                )
                 
                 if mapped_location != original_location:
                     print(f"[AI-SEARCH] ✅ 地名映射成功: {original_location} -> {mapped_location}")
                     filters['location'] = mapped_location
-                    filters['original_location'] = original_location  # 保留原始地名用于显示
+                    filters['original_location'] = original_location
                 else:
                     print(f"[AI-SEARCH] ⚠️ 未找到邮编映射，使用原始location进行模糊搜索: {original_location}")
-                    # 保持原始location，数据库查询会使用LIKE搜索
                     filters['location'] = original_location
         
+        if radius_meters is not None:
+            filters['radius_meters'] = radius_meters
         print(f"  - location (最终): {filters.get('location')}")
         print("-" * 60)
         
@@ -520,11 +526,14 @@ def ai_search_properties():
             display_filters['postcode_prefixes'] = filters['location']  # 保留邮编前缀供调试
         
         # 构建详细的调试信息
+        loc = filters.get('location')
+        is_pc = loc and LocationMapper.is_postcode_prefix(loc)
         debug_info = {
             'total_found': result['total'],
-            'search_location': filters.get('location'),
-            'original_location': filters.get('original_location') or filters.get('location'),
-            'location_type': '邮编格式' if filters.get('location') and LocationMapper.is_postcode_prefix(filters.get('location')) else '地名格式',
+            'search_location': loc,
+            'original_location': filters.get('original_location') or loc,
+            'location_type': '邮编格式' if is_pc else '地名格式',
+            'radius_meters': filters.get('radius_meters'),
             'all_filters': filters,
             'query_params': {
                 'page': page,
@@ -539,9 +548,11 @@ def ai_search_properties():
             'diagnosis': {}
         }
         
-        # 如果使用了邮编格式，添加SQL提示
-        if filters.get('location') and LocationMapper.is_postcode_prefix(filters.get('location')):
-            debug_info['sql_hint'] = f"查询: postcode ILIKE '{filters.get('location').upper()}%'"
+        # 如果使用了邮编格式，添加SQL提示（含 radius 时可能为紧邻邮编如 WC1E）
+        if loc and (is_pc or (filters.get('radius_meters') and ',' not in loc)):
+            debug_info['sql_hint'] = f"查询: postcode ILIKE '{loc.upper()}%'"
+            if filters.get('radius_meters'):
+                debug_info['sql_hint'] += f"（已按 周围{filters['radius_meters']}米 使用更窄邮编）"
             
             # 添加诊断信息到debug_info
             if result['total'] == 0:

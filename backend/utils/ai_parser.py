@@ -143,6 +143,16 @@ class AISearchParser:
 - max_price: 最高价格（整数，英镑）
 - min_price: 最低价格（整数，英镑）
 - location: 位置关键词（字符串，可以是地名如"帝国理工大学"、"伦敦"，也可以是英国邮编如"N10"、"SW7"、"WC1"等）
+- radius_meters: 距离半径（整数，米）。当用户明确提到距离时必填，需统一转换为米。
+  * 中文单位："周围X米"、"附近X米"、"X米内"、"X公里内"（1公里=1000米）、"X英里内"（1英里≈1609米）
+  * 英文单位："within Xm"、"within Xkm"（1km=1000m）、"within Xmiles"或"Xmiles"（1mile≈1609m）
+  * 例如："ucl周围500米" -> {{"location": "ucl", "radius_meters": 500}}
+  * "ucl附近500米" -> {{"location": "ucl", "radius_meters": 500}}
+  * "帝国理工1公里内" -> {{"location": "imperial college", "radius_meters": 1000}}
+  * "within 800m of cambridge" -> {{"location": "cambridge", "radius_meters": 800}}
+  * "UCL附近2miles" -> {{"location": "ucl", "radius_meters": 3218}}（2*1609）
+  * "within 1.5 miles" -> {{"location": "...", "radius_meters": 2414}}（1.5*1609，四舍五入）
+  * 未提距离则不包含此字段。
 
 用户查询：{query}
 
@@ -166,6 +176,8 @@ class AISearchParser:
 {{"location": "N10"}}
 或
 {{"location": "imperial college", "bedrooms": 2}}
+或
+{{"location": "ucl", "radius_meters": 500}}
 
 如果无法确定listing_type，使用默认值：{default_listing_type}"""
 
@@ -244,6 +256,13 @@ class AISearchParser:
                 filters['listing_type'] = default_listing_type
                 print(f"[AI-PARSER] 使用默认listing_type: {default_listing_type}")
             
+            # 如果 AI 没有提取到 radius_meters，尝试用正则解析补充
+            if 'radius_meters' not in filters or filters.get('radius_meters') is None:
+                radius_from_regex = self._extract_radius_from_regex(query)
+                if radius_from_regex is not None:
+                    filters['radius_meters'] = radius_from_regex
+                    print(f"[AI-PARSER] ✅ 正则补充提取 radius_meters: {radius_from_regex}")
+            
             return filters
             
         except json.JSONDecodeError as e:
@@ -260,6 +279,35 @@ class AISearchParser:
             print(f"[AI-PARSER] 降级到正则表达式解析")
             return self._parse_with_regex(query, default_listing_type)
     
+    def _extract_radius_from_regex(self, query: str) -> Optional[int]:
+        """
+        仅从查询中提取 radius_meters（米），不解析其他字段。
+        用于在 AI 解析成功后补充缺失的 radius_meters。
+        """
+        radius_patterns = [
+            (r'周围\s*(\d+(?:\.\d+)?)\s*米', 1),
+            (r'附近\s*(\d+(?:\.\d+)?)\s*米', 1),
+            (r'(\d+(?:\.\d+)?)\s*米\s*附近', 1),
+            (r'(\d+(?:\.\d+)?)\s*米\s*内', 1),
+            (r'(\d+(?:\.\d+)?)\s*米\s*范围', 1),
+            (r'within\s*(\d+(?:\.\d+)?)\s*m\b', 1),
+            (r'(\d+(?:\.\d+)?)\s*m\s*以内', 1),
+            (r'(\d+(?:\.\d+)?)\s*公里\s*内', 1000),
+            (r'(\d+(?:\.\d+)?)\s*km\s*内', 1000),
+            (r'(\d+(?:\.\d+)?)\s*km\s*以内', 1000),
+            (r'(\d+(?:\.\d+)?)\s*英里\s*内', 1609),
+            (r'(\d+(?:\.\d+)?)\s*英里', 1609),
+            (r'within\s*(\d+(?:\.\d+)?)\s*miles?\b', 1609),
+            (r'(\d+(?:\.\d+)?)\s*miles?\b', 1609),
+        ]
+        for pattern, mult in radius_patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                val = float(match.group(1)) * mult
+                if val > 0:
+                    return int(round(val))
+        return None
+
     def _parse_with_regex(self, query: str, default_listing_type: str) -> Dict[str, Any]:
         """使用正则表达式作为备用方案解析查询"""
         filters: Dict[str, Any] = {
@@ -351,6 +399,32 @@ class AISearchParser:
                         max_val *= 10000
                     filters['min_price'] = min_val
                     filters['max_price'] = max_val
+                break
+        
+        # 解析距离半径（米）：周围500米、附近500米、500米内、within 500m、1公里内、2miles 等
+        # 支持小数（如 1.5 miles）
+        radius_patterns = [
+            (r'周围\s*(\d+(?:\.\d+)?)\s*米', 1),
+            (r'附近\s*(\d+(?:\.\d+)?)\s*米', 1),  # "附近500米"
+            (r'(\d+(?:\.\d+)?)\s*米\s*附近', 1),  # "500米附近"（较少见）
+            (r'(\d+(?:\.\d+)?)\s*米\s*内', 1),
+            (r'(\d+(?:\.\d+)?)\s*米\s*范围', 1),
+            (r'within\s*(\d+(?:\.\d+)?)\s*m\b', 1),  # \b 避免匹配 miles
+            (r'(\d+(?:\.\d+)?)\s*m\s*以内', 1),
+            (r'(\d+(?:\.\d+)?)\s*公里\s*内', 1000),
+            (r'(\d+(?:\.\d+)?)\s*km\s*内', 1000),
+            (r'(\d+(?:\.\d+)?)\s*km\s*以内', 1000),
+            (r'(\d+(?:\.\d+)?)\s*英里\s*内', 1609),  # 1 mile ≈ 1609.34m
+            (r'(\d+(?:\.\d+)?)\s*英里', 1609),
+            (r'within\s*(\d+(?:\.\d+)?)\s*miles?\b', 1609),  # miles 或 mile
+            (r'(\d+(?:\.\d+)?)\s*miles?\b', 1609),  # 直接 "2miles" 或 "2 miles"
+        ]
+        for pattern, mult in radius_patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                val = float(match.group(1)) * mult
+                if val > 0:
+                    filters['radius_meters'] = int(round(val))
                 break
         
         # 解析位置信息（简单提取关键词）

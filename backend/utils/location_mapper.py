@@ -66,6 +66,25 @@ class LocationMapper:
         '牛津': ['OX1', 'OX2'],
     }
     
+    # 小半径（如 500m）时使用的更窄邮编，对应地标核心区域
+    # 格式: 地名关键词 -> [邮编前缀列表]。仅当 radius_meters 较小时使用。
+    LANDMARK_TIGHT_POSTCODES: Dict[str, List[str]] = {
+        'ucl': ['WC1E'],
+        'london university college': ['WC1E'],
+        'imperial college': ['SW7 2'],
+        'imperial college london': ['SW7 2'],
+        '帝国理工': ['SW7 2'],
+        '帝国理工大学': ['SW7 2'],
+        'lse': ['WC2A'],
+        'london school of economics': ['WC2A'],
+        'kcl': ['WC2R'],
+        "king's college london": ['WC2R'],
+        'trinity college cambridge': ['CB2 1'],
+        'trinity college': ['CB2 1'],
+        '剑桥三一学院': ['CB2 1'],
+        '三一学院': ['CB2 1'],
+    }
+    
     @classmethod
     def _get_postcode_from_nominatim(cls, location: str) -> Optional[List[str]]:
         """
@@ -222,15 +241,43 @@ class LocationMapper:
         return cls._get_postcode_from_nominatim(location)
     
     @classmethod
-    def location_to_search_term(cls, location: str, use_api: bool = True) -> str:
+    def _location_clean(cls, s: str) -> str:
+        """清理地名：小写、去标点、去「附近」「周边」。"""
+        if not s:
+            return ""
+        return s.strip().lower().replace(',', '').replace('.', '').replace('附近', '').replace('周边', '').strip()
+
+    @classmethod
+    def _get_tight_postcodes_for_radius(cls, location: str, radius_meters: int) -> Optional[List[str]]:
+        """
+        当用户指定小半径（如 500m）时，返回更窄的邮编前缀以近似「周围 X 米」。
+        仅对已知地标有映射；否则返回 None，由调用方走普通邮编解析。
+        """
+        if radius_meters is None or radius_meters > 1000:
+            return None
+        clean = cls._location_clean(location)
+        if not clean:
+            return None
+        sorted_tight = sorted(cls.LANDMARK_TIGHT_POSTCODES.items(), key=lambda x: len(x[0]), reverse=True)
+        for landmark, postcodes in sorted_tight:
+            if landmark == clean or landmark in clean or clean in landmark:
+                if landmark == 'cambridge' and ('trinity' in clean or '三一' in clean):
+                    continue
+                return postcodes
+        return None
+
+    @classmethod
+    def location_to_search_term(cls, location: str, use_api: bool = True, radius_meters: Optional[int] = None) -> str:
         """
         将地名转换为搜索词
         使用API查询邮编，如果找到则返回邮编前缀列表（用逗号分隔）
-        否则返回原location
+        否则返回原location。
+        若提供 radius_meters 且较小（<=1000），且地标有「紧邻」邮编映射，则优先用更窄邮编。
         
         Args:
             location: 地名
             use_api: 是否使用API动态查询（默认True）
+            radius_meters: 可选，距离半径（米）。当 <=1000 且地标有映射时，使用更窄邮编（如 UCL+500m -> WC1E）
         
         Returns:
             搜索词（可能是邮编前缀或多个邮编前缀）
@@ -240,14 +287,20 @@ class LocationMapper:
         
         # 如果是邮编格式，直接返回
         if cls.is_postcode_prefix(location):
-            return location
+            return location.strip().upper()
+        
+        # 小半径且地标有紧邻映射时，使用更窄邮编（仅当明确传入 radius_meters 且 <=1000）
+        if radius_meters is not None and 0 < radius_meters <= 1000:
+            tight = cls._get_tight_postcodes_for_radius(location, radius_meters)
+            if tight:
+                term = ','.join(tight)
+                print(f"[LOCATION-MAPPER] ✅ 半径 {radius_meters}m，使用紧邻邮编: {location} -> {term}")
+                return term
         
         # 使用API查询
         postcodes = cls.get_postcodes(location, use_api=use_api)
         
         if postcodes:
-            # 返回邮编前缀列表，用逗号分隔，用于SQL LIKE查询
-            # 例如: "SW7,SW3" 可以用来搜索 "SW7%" 或 "SW3%"
             return ','.join(postcodes)
         
         return location
@@ -266,22 +319,13 @@ class LocationMapper:
         if not term:
             return False
         
-        term = term.strip().upper()
+        term = term.strip().upper().replace(' ', '')
         
-        # 英国邮编前缀格式：
-        # - 1-2个字母 + 1-2个数字，如: N10, SW7, WC1, M1, OX1, E14 等
-        # - 或者纯字母（较少见），如: SW, SE, N, E, W 等
+        # 英国邮编前缀：1-2字母+1-2数字（可选+1字母，如 WC1E）；或纯字母
         import re
-        
-        # 标准格式：1-2字母 + 1-2数字（如 N10, SW7, E14）
-        pattern1 = r'^[A-Z]{1,2}\d{1,2}$'
-        if re.match(pattern1, term):
+        if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', term):
             return True
-        
-        # 纯字母格式：1-2个字母（如 N, SW, SE）
-        pattern2 = r'^[A-Z]{1,2}$'
-        if re.match(pattern2, term):
+        if re.match(r'^[A-Z]{1,2}$', term):
             return True
-        
         return False
 

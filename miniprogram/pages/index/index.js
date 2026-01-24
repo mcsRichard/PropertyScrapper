@@ -581,7 +581,8 @@ Page({
     }
 
     if (filters.location) {
-      parts.push(filters.location + '附近')
+      const r = filters.radius_meters
+      parts.push(r ? `${filters.location}周围${r}米` : filters.location + '附近')
     }
 
     if (filters.bedrooms) {
