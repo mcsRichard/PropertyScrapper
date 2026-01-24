@@ -116,30 +116,57 @@ Page({
   },
 
   /**
+   * 构建筛选参数（含排序）。AI 激活时与 aiFilters 合并为 AND。
+   */
+  buildFilters() {
+    const filters = {
+      minPrice: this.data.filters.minPrice || null,
+      maxPrice: this.data.filters.maxPrice || null,
+      propertyType: this.data.filters.propertyType || null,
+      bedrooms: this.data.filters.bedrooms || null,
+      listingType: this.data.listingType || 'for_rent'
+    }
+    const currentSortOption = this.data.sortOptions.find(opt => opt.label === this.data.currentSort)
+    if (currentSortOption && currentSortOption.sortBy) {
+      filters.sortBy = currentSortOption.sortBy
+      filters.sortOrder = currentSortOption.sortOrder
+    }
+    return filters
+  },
+
+  /**
+   * AI 激活时合并：location 来自 aiFilters，其余手动有则用手动，否则用 AI。
+   */
+  buildMergedFilters() {
+    const manual = this.buildFilters()
+    const ai = this.data.aiFilters || {}
+    const loc = ai.postcode_prefixes || ai.location || null
+    const has = (v) => v !== null && v !== undefined && v !== ''
+    return {
+      location: loc,
+      listingType: manual.listingType,
+      minPrice: has(manual.minPrice) ? manual.minPrice : (ai.min_price ?? null),
+      maxPrice: has(manual.maxPrice) ? manual.maxPrice : (ai.max_price ?? null),
+      propertyType: manual.propertyType || ai.property_type || null,
+      bedrooms: has(manual.bedrooms) ? manual.bedrooms : (ai.bedrooms ?? null),
+      sortBy: manual.sortBy || null,
+      sortOrder: manual.sortOrder || 'desc'
+    }
+  },
+
+  /**
    * 加载房产列表
+   * 有 AI 搜索时：用合并后的筛选调 getProperties（location + 四筛 AND）。
    */
   loadProperties(refresh = false) {
     if (this.data.loading) return
 
     this.setData({ loading: true })
 
-    // 构建筛选参数
-    const filters = {
-      minPrice: this.data.filters.minPrice || null,
-      maxPrice: this.data.filters.maxPrice || null,
-      propertyType: this.data.filters.propertyType || null,
-      bedrooms: this.data.filters.bedrooms || null,
-      listingType: this.data.listingType || 'for_sale'
-    }
+    const useAI = !!(this.data.searchKeyword && this.data.aiFilters)
+    const filters = useAI ? this.buildMergedFilters() : this.buildFilters()
 
-    // 添加排序参数
-    const currentSortOption = this.data.sortOptions.find(opt => opt.label === this.data.currentSort)
-    if (currentSortOption && currentSortOption.sortBy) {
-      filters.sortBy = currentSortOption.sortBy
-      filters.sortOrder = currentSortOption.sortOrder
-    }
-
-    console.log('筛选参数:', filters)
+    console.log(useAI ? '筛选参数(AI+四筛 AND):' : '筛选参数:', filters)
     console.log('当前筛选状态:', this.data.filters)
 
     api.getProperties(this.data.page, this.data.limit, filters)
@@ -298,8 +325,7 @@ Page({
       currentBedroom: bedroom.label || '不限',
       filters: filters,
       page: 1,
-      hasMore: true,
-      filterExpanded: false // 选择后自动收起
+      hasMore: true
     })
     this.loadProperties(true)
   },
@@ -317,8 +343,7 @@ Page({
       currentType: type.label || '不限',
       filters: filters,
       page: 1,
-      hasMore: true,
-      filterExpanded: false // 选择后自动收起
+      hasMore: true
     })
     this.loadProperties(true)
   },
@@ -365,8 +390,7 @@ Page({
     this.setData({
       currentSort: sortOption.label,
       page: 1,
-      hasMore: true,
-      filterExpanded: false // 选择后自动收起
+      hasMore: true
     })
     this.loadProperties(true)
   },
@@ -430,7 +454,7 @@ Page({
   },
 
   /**
-   * AI对话式搜索
+   * AI对话式搜索。与四个筛选条件 AND：传入当前手动筛选，结果与 AI 解析合并。
    */
   onAISearch() {
     if (!this.data.searchKeyword) {
@@ -446,6 +470,7 @@ Page({
       mask: true
     })
 
+    const extra = this.buildFilters()
     this.setData({
       properties: [],
       page: 1,
@@ -453,7 +478,7 @@ Page({
       loading: true
     })
 
-    api.aiSearchProperties(this.data.searchKeyword, this.data.listingType, this.data.page, this.data.limit)
+    api.aiSearchProperties(this.data.searchKeyword, this.data.listingType, this.data.page, this.data.limit, extra)
       .then(res => {
         wx.hideLoading()
 
@@ -498,43 +523,39 @@ Page({
             loading: false
           })
 
-          // 同步更新筛选状态，方便用户查看和调整
-          // 注意：AI返回的是snake_case，需要转换为camelCase
+          // 合并展示：手动有值则保留，否则用 AI。与后端 AND 逻辑一致。
+          const manual = this.data.filters
           const newFilters = {
-            minPrice: filters.min_price || '',
-            maxPrice: filters.max_price || '',
-            propertyType: filters.property_type || '',
-            bedrooms: filters.bedrooms || ''
+            minPrice: (manual.minPrice !== '' && manual.minPrice != null) ? manual.minPrice : (filters.min_price || ''),
+            maxPrice: (manual.maxPrice !== '' && manual.maxPrice != null) ? manual.maxPrice : (filters.max_price || ''),
+            propertyType: manual.propertyType || filters.property_type || '',
+            bedrooms: (manual.bedrooms !== '' && manual.bedrooms != null) ? manual.bedrooms : (filters.bedrooms || '')
           }
 
-          // 更新价格显示
           let currentPrice = '不限'
           if (newFilters.minPrice || newFilters.maxPrice) {
-            // 查找匹配的价格选项
             const matchedOption = this.data.priceOptions.find(opt =>
               opt.minPrice === newFilters.minPrice && opt.maxPrice === newFilters.maxPrice
             )
             if (matchedOption) {
               currentPrice = matchedOption.label
             } else {
-              // 如果没有匹配的预设，使用格式化显示
               const listingType = filters.listing_type || this.data.listingType
               const defaultMax = listingType === 'for_sale' ? 2000000 : 4000
               currentPrice = this.formatPriceRange([newFilters.minPrice || 0, newFilters.maxPrice || defaultMax])
             }
           }
 
+          const typeLabel = this.data.typeOptions.find(o => o.value === newFilters.propertyType)?.label || '不限'
+          const bedroomLabel = this.data.bedroomOptions.find(o => String(o.value) === String(newFilters.bedrooms))?.label || '不限'
+
           this.setData({
             filters: newFilters,
             currentPrice: currentPrice,
             priceDisplay: currentPrice,
-            listingType: filters.listing_type || this.data.listingType
+            currentType: typeLabel,
+            currentBedroom: bedroomLabel
           })
-
-          // 如果listing_type改变了，更新价格预设
-          if (filters.listing_type && filters.listing_type !== this.data.listingType) {
-            this.updatePricePresets()
-          }
         }
       })
       .catch(err => {
@@ -713,8 +734,7 @@ Page({
       filters: filters,
       priceDisplay: priceOption.label,
       page: 1,
-      hasMore: true,
-      filterExpanded: false // 选择后自动收起
+      hasMore: true
     })
     this.loadProperties(true)
   },

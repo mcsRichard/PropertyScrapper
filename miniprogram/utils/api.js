@@ -73,11 +73,14 @@ function request(url, method = 'GET', data = {}) {
 
 /**
  * 获取房产列表
+ * @param {Object} filters - 可选 location（AI 搜索地域）、minPrice、maxPrice、propertyType、bedrooms、listingType、sortBy、sortOrder
  */
 function getProperties(page = 1, limit = 20, filters = {}) {
   let url = `/api/properties?page=${page}&limit=${limit}`
   
-  // 添加筛选条件
+  if (filters.location) {
+    url += `&location=${encodeURIComponent(filters.location)}`
+  }
   if (filters.minPrice !== null && filters.minPrice !== undefined && filters.minPrice !== '') {
     url += `&min_price=${filters.minPrice}`
   }
@@ -93,8 +96,6 @@ function getProperties(page = 1, limit = 20, filters = {}) {
   if (filters.listingType) {
     url += `&listing_type=${filters.listingType}`
   }
-  
-  // 添加排序参数
   if (filters.sortBy) {
     url += `&sort_by=${filters.sortBy}`
   }
@@ -121,17 +122,30 @@ function searchProperties(keyword, page = 1, limit = 20) {
 }
 
 /**
- * AI对话式搜索房产
- * @param {string} query - 自然语言查询，例如："帝国理工大学附近2室一厅公寓4000镑以下"
- * @param {string} listingType - 默认listing_type，'for_sale'或'for_rent'
+ * AI对话式搜索房产。与四个筛选条件 AND 合并。
+ * @param {string} query - 自然语言查询
+ * @param {string} listingType - 'for_sale'或'for_rent'
  * @param {number} page - 页码
  * @param {number} limit - 每页数量
+ * @param {Object} [extraFilters] - 四个筛选条件 { minPrice, maxPrice, propertyType, bedrooms, sortBy, sortOrder, listingType }，与 AI 结果 AND
  */
-function aiSearchProperties(query, listingType = 'for_rent', page = 1, limit = 20) {
-  return request('/api/properties/ai-search?page=' + page + '&limit=' + limit, 'POST', {
+function aiSearchProperties(query, listingType = 'for_rent', page = 1, limit = 20, extraFilters = null) {
+  const body = {
     query: query,
     listing_type: listingType
-  })
+  }
+  if (extraFilters && typeof extraFilters === 'object') {
+    body.extra_filters = {
+      min_price: extraFilters.minPrice ?? extraFilters.min_price,
+      max_price: extraFilters.maxPrice ?? extraFilters.max_price,
+      property_type: extraFilters.propertyType || extraFilters.property_type,
+      bedrooms: extraFilters.bedrooms,
+      sort_by: extraFilters.sortBy || extraFilters.sort_by,
+      sort_order: extraFilters.sortOrder || extraFilters.sort_order,
+      listing_type: extraFilters.listingType || extraFilters.listing_type
+    }
+  }
+  return request('/api/properties/ai-search?page=' + page + '&limit=' + limit, 'POST', body)
 }
 
 function login(code, userInfo = {}) {

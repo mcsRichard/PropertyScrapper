@@ -291,11 +291,12 @@ def test_ai_config():
 
 @properties_bp.route('/ai-search', methods=['POST'])
 def ai_search_properties():
-    """AI对话式搜索房产"""
+    """AI对话式搜索房产。支持 extra_filters（筛选条件）与 AI 解析结果 AND 合并。"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         query = data.get('query', '').strip()
         default_listing_type = data.get('listing_type', 'for_rent')  # 默认出租
+        extra_filters = data.get('extra_filters') or {}  # 前端四个筛选条件，与 AI 结果 AND
         page = int(request.args.get('page', 1))
         limit = int(request.args.get('limit', 20))
         
@@ -304,6 +305,7 @@ def ai_search_properties():
         print("[AI-SEARCH] 收到搜索请求")
         print(f"[AI-SEARCH] 原始查询: {query}")
         print(f"[AI-SEARCH] 默认listing_type: {default_listing_type}")
+        print(f"[AI-SEARCH] extra_filters(AND): {extra_filters}")
         print(f"[AI-SEARCH] 分页参数: page={page}, limit={limit}")
         print("=" * 60)
         
@@ -376,12 +378,28 @@ def ai_search_properties():
         print(f"  - location (最终): {filters.get('location')}")
         print("-" * 60)
         
+        # 与 extra_filters（四个筛选条件）AND 合并：有则覆盖 AI 结果
+        if extra_filters:
+            if 'min_price' in extra_filters and (extra_filters.get('min_price') is not None and extra_filters.get('min_price') != ''):
+                filters['min_price'] = int(extra_filters['min_price'])
+            if 'max_price' in extra_filters and (extra_filters.get('max_price') is not None and extra_filters.get('max_price') != ''):
+                filters['max_price'] = int(extra_filters['max_price'])
+            if extra_filters.get('property_type'):
+                filters['property_type'] = extra_filters['property_type']
+            if extra_filters.get('bedrooms') is not None and extra_filters.get('bedrooms') != '':
+                b = extra_filters['bedrooms']
+                filters['bedrooms'] = int(b) if isinstance(b, (int, float)) else b
+            if extra_filters.get('listing_type'):
+                filters['listing_type'] = extra_filters['listing_type']
+        sort_by = extra_filters.get('sort_by')
+        sort_order = (extra_filters.get('sort_order') or 'desc')
+        
         # 获取数据库会话
         db: Session = next(get_db())
         property_service = PropertyService(db)
         
         # ========== 调试信息：显示数据库查询参数 ==========
-        print("[AI-SEARCH] 执行数据库查询，参数:")
+        print("[AI-SEARCH] 执行数据库查询（AI + extra_filters AND），参数:")
         print(f"  - page: {page}, limit: {limit}")
         print(f"  - min_price: {filters.get('min_price')}")
         print(f"  - max_price: {filters.get('max_price')}")
@@ -391,8 +409,9 @@ def ai_search_properties():
         location_type = '邮编格式' if filters.get('location') and LocationMapper.is_postcode_prefix(filters.get('location')) else '地名格式'
         print(f"  - location类型: {location_type}")
         print(f"  - listing_type: {filters.get('listing_type')}")
+        print(f"  - sort_by: {sort_by}, sort_order: {sort_order}")
         
-        # 使用解析出的筛选条件获取房产列表
+        # 使用解析出的筛选条件（已与 extra_filters 合并）获取房产列表
         result = property_service.get_properties(
             page=page,
             limit=limit,
@@ -401,7 +420,9 @@ def ai_search_properties():
             property_type=filters.get('property_type'),
             bedrooms=filters.get('bedrooms'),
             location=filters.get('location'),
-            listing_type=filters.get('listing_type')
+            listing_type=filters.get('listing_type'),
+            sort_by=sort_by,
+            sort_order=sort_order
         )
         
         # ========== 调试信息：显示查询结果 ==========

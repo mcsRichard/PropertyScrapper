@@ -46,8 +46,8 @@ class Config:
     OPENAI_API_BASE = os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')  # OpenAI API地址
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')  # OpenAI模型名称
 
-    WECHAT_APP_ID = os.getenv('WECHAT_APP_ID', 'wx91bb9f22ea677e19')
-    WECHAT_APP_SECRET = os.getenv('WECHAT_APP_SECRET', '484b7a57955346628fd67dfd66daaf7d')
+    WECHAT_APP_ID = os.getenv('WECHAT_APP_ID', 'wx626ba8df3b4edb7b')
+    WECHAT_APP_SECRET = os.getenv('WECHAT_APP_SECRET', '2d5eaccaf4a6f28ec7c254ce608825c3')
     AUTH_TOKEN_EXPIRES = int(os.getenv('AUTH_TOKEN_EXPIRES', 86400))
 
     # 用户功能配置
