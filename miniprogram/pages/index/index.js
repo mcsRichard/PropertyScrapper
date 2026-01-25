@@ -250,7 +250,11 @@ Page({
       return
     }
     this.setData({ loginInProgress: true })
-    auth.loginWithWeChat()
+    
+    // 立即登录（不等待用户信息，避免 code 过期）
+    // 用户信息可以在登录成功后通过其他方式补充
+    console.log('[AUTH] 用户点击登录，立即获取 code 并登录...')
+    auth.loginWithWeChat(0, null)
       .then(() => {
         wx.showToast({
           title: '登录成功',

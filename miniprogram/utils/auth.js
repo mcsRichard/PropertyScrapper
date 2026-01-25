@@ -1,41 +1,69 @@
 const api = require('./api.js')
 
-function loginWithWeChat() {
+function loginWithWeChat(retryCount = 0, userProfile = null) {
+  const MAX_RETRIES = 1  // 最多重试 1 次
   return new Promise((resolve, reject) => {
-    // 先获取用户信息（需要用户点击）
-    requestUserProfile()
-      .then((userProfile) => {
-        // 获取用户信息成功后，再调用 login
-        wx.login({
-          success: (loginRes) => {
-            if (!loginRes.code) {
-              reject(new Error('获取登录凭证失败'))
-              return
-            }
+    // 先获取 code，立即登录（不等待用户信息，避免 code 过期）
+    wx.login({
+      success: (loginRes) => {
+        if (!loginRes.code) {
+          reject(new Error('获取登录凭证失败'))
+          return
+        }
 
-            // 使用 code 和 userProfile 进行登录
-            api.login(loginRes.code, userProfile)
-              .then((res) => {
-                if (res.success && res.data) {
-                  const app = getApp()
-                  const token = res.data.token
-                  const user = normalizeUser(res.data.user, userProfile)
-                  const contactStats = res.data.contact_stats
-                  if (app && typeof app.setAuthData === 'function') {
-                    app.setAuthData(token, user, contactStats)
-                  }
-                  resolve(res.data)
-                } else {
-                  reject(new Error(res.error || '登录失败'))
-                }
-              })
-              .catch(reject)
-          },
-          fail: (err) => reject(err)
-        })
-      })
-      .catch(reject)
+        const code = loginRes.code
+        console.log(`[AUTH] 获取到 code（重试次数: ${retryCount}），立即登录...`)
+
+        // 直接使用 code 登录，userProfile 可选（如果传入则使用，否则为空对象）
+        // 用户信息可以在登录成功后通过其他方式补充
+        api.login(code, userProfile || {})
+          .then((res) => {
+            if (res.success && res.data) {
+              const app = getApp()
+              const token = res.data.token
+              const user = normalizeUser(res.data.user, userProfile || {})
+              const contactStats = res.data.contact_stats
+              if (app && typeof app.setAuthData === 'function') {
+                app.setAuthData(token, user, contactStats)
+              }
+              resolve(res.data)
+            } else {
+              // 处理特定错误：code 过期或已使用
+              const errorMsg = res.error || '登录失败'
+              if ((errorMsg.includes('invalid code') || errorMsg.includes('code 已过期') || errorMsg.includes('code 已被使用')) && retryCount < MAX_RETRIES) {
+                console.warn('[AUTH] code 无效，尝试重新获取...')
+                return loginWithWeChat(retryCount + 1, userProfile)
+              }
+              reject(new Error(errorMsg))
+            }
+          })
+          .catch((err) => {
+            const errMsg = err.message || err.error || String(err)
+            if ((errMsg.includes('invalid code') || errMsg.includes('code 已过期') || errMsg.includes('code 已被使用')) && retryCount < MAX_RETRIES) {
+              console.warn('[AUTH] code 无效，尝试重新获取...')
+              return loginWithWeChat(retryCount + 1, userProfile)
+            }
+            reject(err)
+          })
+      },
+      fail: (err) => {
+        console.error('[AUTH] wx.login 失败:', err)
+        reject(new Error('获取登录凭证失败: ' + (err.errMsg || String(err))))
+      }
+    })
   })
+}
+
+/**
+ * 在用户点击事件中调用，直接登录（不获取用户信息，避免 getUserProfile 同步上下文问题）
+ * 用户信息可以在登录成功后通过其他方式补充
+ */
+function loginWithWeChatAndProfile() {
+  // 直接使用 loginWithWeChat，不获取用户信息
+  // 这样可以避免 wx.getUserProfile 必须在同步上下文中调用的问题
+  // 用户信息可以在登录成功后通过其他方式补充
+  console.log('[AUTH] 用户点击登录，直接登录（不获取用户信息）')
+  return loginWithWeChat(0, null)
 }
 
 function fetchUserProfile() {
@@ -112,7 +140,8 @@ function logout() {
 }
 
 module.exports = {
-  loginWithWeChat,
+  loginWithWeChat,  // 直接登录（不获取用户信息，适合自动登录）
+  loginWithWeChatAndProfile,  // 先获取用户信息再登录（必须在用户点击事件中调用）
   fetchUserProfile,
   logout
 }

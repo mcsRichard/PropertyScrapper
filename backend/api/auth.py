@@ -23,6 +23,7 @@ def _exchange_code_for_session(code: str):
         raise ValueError("WECHAT_APP_ID 或 WECHAT_APP_SECRET 未配置")
 
     try:
+        print(f"[AUTH] 调用微信 code2Session，appid: {Config.WECHAT_APP_ID[:8]}...")
         resp = requests.get(
             "https://api.weixin.qq.com/sns/jscode2session",
             params={
@@ -35,12 +36,33 @@ def _exchange_code_for_session(code: str):
         )
         resp.raise_for_status()
         data = resp.json()
+        print(f"[AUTH] 微信 API 响应: {data}")
     except requests.RequestException as exc:
+        print(f"[AUTH] ❌ 微信登录接口调用失败: {exc}")
         raise ValueError(f"微信登录接口调用失败: {exc}") from exc
 
     if data.get("errcode"):
-        raise ValueError(f"微信登录失败: {data.get('errmsg', 'unknown error')}")
+        errcode = data.get("errcode")
+        errmsg = data.get("errmsg", "unknown error")
+        rid = data.get("rid", "")
+        error_detail = f"微信登录失败: {errmsg}"
+        if errcode:
+            error_detail += f" (errcode: {errcode})"
+        if rid:
+            error_detail += f", rid: {rid}"
+        
+        # 常见错误码说明
+        if errcode == 40029:
+            error_detail += "。code 已过期或已使用，请重新获取"
+        elif errcode == 40163:
+            error_detail += "。code 已被使用，请重新获取"
+        elif errcode == 45011:
+            error_detail += "。API 调用太频繁，请稍后再试"
+        
+        print(f"[AUTH] ❌ {error_detail}")
+        raise ValueError(error_detail)
 
+    print(f"[AUTH] ✅ 成功获取 openid: {data.get('openid', '')[:10]}...")
     return data
 
 
