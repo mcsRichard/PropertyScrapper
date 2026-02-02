@@ -78,7 +78,8 @@ App({
 
   globalData: {
     //apiBaseUrl: 'http://localhost:5000',//本地
-    apiBaseUrl: 'https://1383789184-lebyqyy34m.ap-shanghai.tencentscf.com',//线上
+    //apiBaseUrl: 'https://1383789184-lebyqyy34m.ap-shanghai.tencentscf.com',//临时域名（已弃用）
+    apiBaseUrl: 'https://api.ukliving.cn',//正式域名
     authToken: null,
     userInfo: null,
     contactStats: null,
