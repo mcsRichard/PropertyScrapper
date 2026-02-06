@@ -262,7 +262,7 @@ def test_ai_config():
             'api_base': parser.api_base if parser.use_ai else None,
             'model': parser.model if parser.use_ai else None,
             'api_key_configured': bool(parser.api_key) if hasattr(parser, 'api_key') else False,
-            'sdk_available': OPENAI_SDK_AVAILABLE
+            'sdk_available': OPENAI_SDK_AVAILABLE if parser.api_type == 'openai' else True
         }
         
         # 如果AI可用，尝试一个简单的测试查询

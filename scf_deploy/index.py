@@ -10,6 +10,9 @@ import os
 # 添加 backend 目录到 Python 路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
+# 添加 python_packages 目录到 Python 路径（第三方依赖）
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'python_packages'))
+
 # 导入 Flask 应用创建函数
 from app import create_app
 

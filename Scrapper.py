@@ -2,6 +2,13 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+
+# Optional: auto-download ChromeDriver matching installed Chrome (avoids version mismatch)
+try:
+    from webdriver_manager.chrome import ChromeDriverManager
+    _USE_WEBDRIVER_MANAGER = True
+except ImportError:
+    _USE_WEBDRIVER_MANAGER = False
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import (
@@ -365,7 +372,12 @@ def fetch_property_html(url, max_retries=3, click_full_description=False):
             ]
             chrome_options.add_argument(f'user-agent={random.choice(user_agents)}')
 
-            service = Service('./chromedriver.exe')
+            # Prefer webdriver-manager (matches Chrome version); else use local chromedriver.exe
+            if _USE_WEBDRIVER_MANAGER:
+                driver_path = ChromeDriverManager().install()
+                service = Service(driver_path)
+            else:
+                service = Service('./chromedriver.exe')
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
