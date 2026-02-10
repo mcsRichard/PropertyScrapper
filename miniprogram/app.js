@@ -85,6 +85,6 @@ App({
     contactStats: null,
     // 客服微信号与二维码图片地址（请根据实际情况填写）
     customerServiceWechat: '',  // 例如：'uk-property-support'
-    customerServiceQrUrl: '/image/qrcode_Richard_Test.png'    // 例如：'/image/customer-service-qr.png' 或线上HTTPS地址
+    customerServiceQrUrl: '/image/contact.png'    // 例如：'/image/customer-service-qr.png' 或线上HTTPS地址
   }
 })
