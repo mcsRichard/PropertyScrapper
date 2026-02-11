@@ -380,6 +380,7 @@ Page({
       aiFilters: null,
       aiFiltersText: ''
     })
+    this._searchKeyword = ''
     this.loadProperties(true)
   },
 
@@ -410,11 +411,13 @@ Page({
 
 
   /**
-   * 搜索框输入
+   * 搜索框输入（同步保存一份，避免真机点击时 setData 未完成导致第一次点击读到空）
    */
   onSearchInput(e) {
+    const value = e.detail.value
+    this._searchKeyword = value
     this.setData({
-      searchKeyword: e.detail.value
+      searchKeyword: value
     })
   },
 
@@ -422,7 +425,8 @@ Page({
    * 执行搜索（传统搜索，保留兼容性）
    */
   onSearch() {
-    if (!this.data.searchKeyword) {
+    const keyword = (this._searchKeyword !== undefined ? this._searchKeyword : this.data.searchKeyword) || ''
+    if (!keyword.trim()) {
       wx.showToast({
         title: '请输入关键词',
         icon: 'none'
@@ -438,7 +442,7 @@ Page({
       aiFiltersText: ''
     })
 
-    api.searchProperties(this.data.searchKeyword, this.data.page, this.data.limit)
+    api.searchProperties(keyword, this.data.page, this.data.limit)
       .then(res => {
         if (res.success && res.data) {
           this.setData({
@@ -459,9 +463,11 @@ Page({
 
   /**
    * AI对话式搜索。与四个筛选条件 AND：传入当前手动筛选，结果与 AI 解析合并。
+   * 使用同步备份的输入值，避免真机第一次点击时 setData 未完成导致提示“请输入搜索条件”。
    */
   onAISearch() {
-    if (!this.data.searchKeyword) {
+    const keyword = (this._searchKeyword !== undefined ? this._searchKeyword : this.data.searchKeyword) || ''
+    if (!keyword.trim()) {
       wx.showToast({
         title: '请输入搜索条件',
         icon: 'none'
@@ -482,7 +488,7 @@ Page({
       loading: true
     })
 
-    api.aiSearchProperties(this.data.searchKeyword, this.data.listingType, this.data.page, this.data.limit, extra)
+    api.aiSearchProperties(keyword, this.data.listingType, this.data.page, this.data.limit, extra)
       .then(res => {
         wx.hideLoading()
 
