@@ -42,4 +42,8 @@ SECRET_KEY=property-scrapper-secret
 AUTH_TOKEN_EXPIRES=604800
 DAILY_CONTACT_LIMIT=5
 
+# 开发者免限制：真机自测时把自己的微信 openid 填在这里（逗号分隔），这些账号不受每日 5 次限制
+# 获取 openid：用自己微信登录小程序后，在数据库 User 表查 openid，或临时在登录接口日志里查看
+# DEVELOPER_OPENIDS=oXXXXxx1,oXXXXxx2
+
 # 注意：如果未配置任何API密钥，将使用正则表达式作为备用方案（准确度较低）

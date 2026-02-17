@@ -53,3 +53,6 @@ class Config:
 
     # 用户功能配置
     DAILY_CONTACT_LIMIT = int(os.getenv('DAILY_CONTACT_LIMIT', 5))
+    # 开发者/测试账号 openid 白名单：这些账号不受每日联系次数限制（逗号分隔，用于真机自测）
+    _developer_openids = os.getenv('DEVELOPER_OPENIDS', '').strip()
+    DEVELOPER_OPENIDS = [x.strip() for x in _developer_openids.split(',') if x.strip()]

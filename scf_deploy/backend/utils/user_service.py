@@ -86,7 +86,11 @@ class UserService:
         }
 
     def get_contact_stats(self, user_id: int) -> Dict[str, int]:
-        """返回今日联系次数和剩余额度"""
+        """返回今日联系次数和剩余额度。开发者 openid 在白名单内则不受限制（剩余 999）。"""
+        user = self.get_user_by_id(user_id)
+        if user and getattr(Config, "DEVELOPER_OPENIDS", None) and user.openid in Config.DEVELOPER_OPENIDS:
+            return {"limit": 999, "used": 0, "remaining": 999}
+
         today = datetime.utcnow().date()
         used = (
             self.db.query(func.count(UserContactLog.id))

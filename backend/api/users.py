@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g
 from sqlalchemy.orm import Session
 
+from config import Config
 from models.database import get_db
 from utils.auth import login_required
 from utils.database import PropertyService
@@ -23,14 +24,14 @@ def current_user():
         }), 404
 
     contact_stats = user_service.get_contact_stats(user.id)
-
-    return jsonify({
-        "success": True,
-        "data": {
-            "user": user_service.serialize_user(user),
-            "contact_stats": contact_stats,
-        }
-    })
+    data = {
+        "user": user_service.serialize_user(user),
+        "contact_stats": contact_stats,
+    }
+    # 开发模式下返回 openid，便于复制到 .env 的 DEVELOPER_OPENIDS
+    if Config.DEBUG and user.openid:
+        data["openid_for_dev"] = user.openid
+    return jsonify({"success": True, "data": data})
 
 
 @users_bp.route("/contact-link", methods=["POST"])
@@ -77,7 +78,9 @@ def contact_link():
             "contact_stats": contact_stats
         }), 403
 
-    user_service.log_contact_action(user.id, property_obj.id, property_obj.url)
+    # 开发者白名单账号不写入联系记录，避免测试数据污染
+    if not (getattr(Config, "DEVELOPER_OPENIDS", None) and user.openid in Config.DEVELOPER_OPENIDS):
+        user_service.log_contact_action(user.id, property_obj.id, property_obj.url)
     updated_stats = user_service.get_contact_stats(user.id)
 
     return jsonify({

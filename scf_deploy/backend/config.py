@@ -52,3 +52,5 @@ class Config:
 
     # 用户功能配置
     DAILY_CONTACT_LIMIT = int(os.getenv('DAILY_CONTACT_LIMIT', 5))
+    _developer_openids = os.getenv('DEVELOPER_OPENIDS', '').strip()
+    DEVELOPER_OPENIDS = [x.strip() for x in _developer_openids.split(',') if x.strip()]

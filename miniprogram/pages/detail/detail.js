@@ -303,6 +303,10 @@ Page({
       })
   },
 
+  /**
+   * 联系中介：原始链接为 Zoopla 等第三方域名，小程序 web-view 仅支持已配置的业务域名，
+   * 无法在小程序内直接打开。改为复制链接并提示用户在浏览器中打开。
+   */
   openContactLink(targetUrl) {
     if (!targetUrl) {
       wx.showToast({
@@ -311,19 +315,20 @@ Page({
       })
       return
     }
-    const encodedUrl = encodeURIComponent(targetUrl)
-    wx.navigateTo({
-      url: `/pages/webview/webview?url=${encodedUrl}`,
+    wx.setClipboardData({
+      data: targetUrl,
+      success: () => {
+        wx.showModal({
+          title: '链接已复制',
+          content: '因平台限制，无法在小程序内打开第三方网页。请点击「确定」后，在微信中粘贴链接到浏览器打开，即可在 Zoopla 页面联系中介。',
+          showCancel: false,
+          confirmText: '知道了'
+        })
+      },
       fail: () => {
-        wx.setClipboardData({
-          data: targetUrl,
-          success: () => {
-            wx.showModal({
-              title: '已复制链接',
-              content: '系统暂无法直接打开该网页，链接已复制，可在浏览器中打开。',
-              showCancel: false
-            })
-          }
+        wx.showToast({
+          title: '复制失败，请稍后重试',
+          icon: 'none'
         })
       }
     })
