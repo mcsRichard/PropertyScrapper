@@ -449,4 +449,38 @@ Page({
       }
     })
   },
+
+  /**
+   * 分享功能
+   */
+  onShareAppMessage() {
+    const property = this.data.property
+    if (property && property.id) {
+      return {
+        title: property.title || '英国房产详情',
+        path: `/pages/detail/detail?id=${property.id}`,
+        imageUrl: property.image_url || ''
+      }
+    }
+    return {
+      title: '英国房产信息查询',
+      path: '/pages/index/index'
+    }
+  },
+
+  /**
+   * 分享到朋友圈
+   */
+  onShareTimeline() {
+    const property = this.data.property
+    if (property && property.id) {
+      return {
+        title: property.title || '英国房产详情',
+        query: `id=${property.id}`
+      }
+    }
+    return {
+      title: '英国房产信息查询 - UK Property'
+    }
+  }
 })

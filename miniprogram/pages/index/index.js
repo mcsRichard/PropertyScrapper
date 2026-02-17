@@ -876,5 +876,24 @@ Page({
       pricePresetSelected: -1,
       priceDisplay: display
     })
+  },
+
+  /**
+   * 分享功能
+   */
+  onShareAppMessage() {
+    return {
+      title: '英国房产信息查询 - 找房更轻松',
+      path: '/pages/index/index'
+    }
+  },
+
+  /**
+   * 分享到朋友圈
+   */
+  onShareTimeline() {
+    return {
+      title: '英国房产信息查询 - UK Property'
+    }
   }
 })
