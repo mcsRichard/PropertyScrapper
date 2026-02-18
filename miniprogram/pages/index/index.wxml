@@ -67,15 +67,21 @@
     </view>
     
     <!-- AI解析结果提示 -->
-    <view class="ai-filter-tip" wx:if="{{aiFilters && aiFilters.query}}">
+    <view class="ai-filter-tip" wx:if="{{aiFilters && searchKeyword}}">
+      <view class="ai-generated-badge">
+        <text class="ai-generated-text">🤖 AI生成</text>
+      </view>
       <view class="tip-content">
         <view class="tip-icon-wrapper">
           <text class="tip-icon">✨</text>
         </view>
         <view class="tip-text-wrapper">
-          <text class="tip-label">AI已为您解析</text>
+          <text class="tip-label">AI已为您解析搜索条件</text>
           <text class="tip-text">{{aiFiltersText}}</text>
         </view>
+      </view>
+      <view class="ai-disclaimer">
+        <text class="ai-disclaimer-text">以上搜索条件由AI生成，仅供参考</text>
       </view>
     </view>
   </view>
@@ -205,6 +211,12 @@
       <button class="btn-primary" bindtap="applyPriceFilter">确定</button>
       <button class="btn-secondary" bindtap="cancelPriceFilter">取消</button>
     </view>
+  </view>
+
+  <!-- AI搜索结果标识栏 -->
+  <view class="ai-result-bar" wx:if="{{aiFilters && searchKeyword}}">
+    <text class="ai-result-label">🤖 AI生成结果</text>
+    <text class="ai-result-hint">内容由AI辅助生成，请自行核实</text>
   </view>
 
   <!-- 房产列表 -->

@@ -44,19 +44,18 @@ class AISearchParser:
         """
         self.api_type = (api_type or os.getenv('AI_API_TYPE', 'deepseek')).lower()
         
-        # 优先使用DeepSeek（国内更稳定）
-        if self.api_type == 'deepseek':
+        # DeepSeek 或 Hunyuan（腾讯混元）：均使用 HTTP 直接调用，避免 SDK 依赖
+        if self.api_type in ('deepseek', 'hunyuan'):
             self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY')
-            # DeepSeek API base_url（OpenAI SDK 会自动添加 /v1 路径）
             default_base = os.getenv('DEEPSEEK_API_BASE', 'https://api.deepseek.com')
-            # 移除末尾的 /v1（如果存在），因为 OpenAI SDK 会自动添加
             if default_base.endswith('/v1'):
                 self.api_base = default_base[:-3]
             elif default_base.endswith('/v1/'):
                 self.api_base = default_base[:-4]
             else:
                 self.api_base = default_base.rstrip('/')
-            self.model = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat')
+            default_model = 'hunyuan-lite' if self.api_type == 'hunyuan' else 'deepseek-chat'
+            self.model = os.getenv('DEEPSEEK_MODEL', default_model)
         else:  # OpenAI
             self.api_key = api_key or os.getenv('OPENAI_API_KEY')
             default_base = os.getenv('OPENAI_API_BASE', 'https://api.openai.com')
@@ -72,8 +71,8 @@ class AISearchParser:
         self.client = None
         self.use_ai = False
         if self.api_key:
-            if self.api_type == 'deepseek':
-                # DeepSeek 直接使用 HTTP 调用，避免 OpenAI SDK 依赖问题
+            if self.api_type in ('deepseek', 'hunyuan'):
+                # DeepSeek / 腾讯混元：直接使用 HTTP 调用，避免 OpenAI SDK 依赖问题
                 self.use_ai = True
                 print(f"[AI-PARSER] ✅ 初始化成功: 使用 {self.api_type.upper()} HTTP API")
                 print(f"[AI-PARSER] 📍 API地址: {self.api_base}")
@@ -155,11 +154,21 @@ class AISearchParser:
 对于位置信息：
 - 如果提到"附近"、"周边"等，保留地点名称作为location参数
 - 常见地点包括：
-  * 帝国理工大学（Imperial College London）、帝国理工、帝国大学 -> "imperial college" 或 "imperial college london"
-  * 剑桥三一学院、三一学院 -> "trinity college cambridge" 或 "trinity college"
+  * 帝国理工大学（Imperial College London）、帝国理工、帝国大学、IC -> "imperial college"
+  * 剑桥三一学院、三一学院 -> "trinity college cambridge"
   * 剑桥大学、剑桥 -> "cambridge university" 或 "cambridge"
   * 牛津大学、牛津 -> "oxford university" 或 "oxford"
-  * 伦敦大学（UCL/LSE/KCL）-> "ucl"、"lse"、"kcl" 或完整名称
+  * UCL（伦敦大学学院）、伦敦大学 -> "ucl"
+  * LSE（伦敦政经学院）、伦敦政治经济学院 -> "lse"
+  * KCL（伦敦国王学院）、国王学院 -> "kcl"
+  * QMUL（伦敦玛丽女王大学）、Queen Mary、玛丽女王大学 -> "qmul"
+  * SOAS（亚非学院）-> "soas"
+  * 伦敦城市大学、City University -> "city university london"
+  * 威斯敏斯特大学 -> "university of westminster"
+  * 曼彻斯特大学 -> "university of manchester"
+  * 伯明翰大学 -> "university of birmingham"
+  * 利兹大学 -> "university of leeds"
+  * 爱丁堡大学 -> "university of edinburgh"
 - 如果输入的是英国邮编格式（如"N10"、"SW7"、"WC1"等），直接作为location参数
 - 邮编格式通常是：1-2个字母+1-2个数字，或纯字母（如"N10"、"SW7"、"N"、"SW"等）
 - 地点简称也要识别，如"帝国理工"应理解为"帝国理工大学"或"Imperial College London"
@@ -175,7 +184,7 @@ class AISearchParser:
 如果无法确定listing_type，使用默认值：{default_listing_type}"""
 
             print(f"[AI-PARSER] 调用AI API，模型: {self.model}")
-            if self.api_type == 'deepseek':
+            if self.api_type in ('deepseek', 'hunyuan'):
                 result_text, model_name, total_tokens = self._call_deepseek_http(prompt)
             else:
                 response = self.client.chat.completions.create(
@@ -237,7 +246,15 @@ class AISearchParser:
             if 'listing_type' not in filters:
                 filters['listing_type'] = default_listing_type
                 print(f"[AI-PARSER] 使用默认listing_type: {default_listing_type}")
-            
+
+            # 如果 AI 没有提取到 location，用正则静态映射表补充
+            if 'location' not in filters or not filters.get('location'):
+                regex_result = self._parse_with_regex(query, default_listing_type)
+                location_from_regex = regex_result.get('location')
+                if location_from_regex:
+                    filters['location'] = location_from_regex
+                    print(f"[AI-PARSER] ✅ 正则补充提取 location: {location_from_regex}")
+
             return filters
             
         except json.JSONDecodeError as e:
@@ -389,14 +406,29 @@ class AISearchParser:
             ('剑桥', 'cambridge'),  # 剑桥
             ('牛津大学', 'oxford'),
             ('牛津', 'oxford'),
+            ('伦敦玛丽女王大学', 'qmul'),
+            ('玛丽女王大学', 'qmul'),
+            ('queen mary university of london', 'qmul'),
+            ('queen mary university', 'qmul'),
+            ('qmul', 'qmul'),
+            ('伦敦政治经济学院', 'lse'),
+            ('伦敦国王学院', 'kcl'),
+            ('伦敦城市大学', 'city university london'),
+            ('city university london', 'city university london'),
+            ('威斯敏斯特大学', 'university of westminster'),
+            ('soas', 'soas'),
+            ('lsbu', 'lsbu'),
             ('伦敦大学', 'ucl'),
             ('ucl', 'ucl'),
             ('lse', 'lse'),
             ('kcl', 'kcl'),
+            ('爱丁堡大学', 'university of edinburgh'),
+            ('爱丁堡', 'edinburgh'),
+            ('曼彻斯特大学', 'university of manchester'),
             ('伦敦', 'london'),
             ('曼彻斯特', 'manchester'),
+            ('伯明翰大学', 'university of birmingham'),
             ('伯明翰', 'birmingham'),
-            ('爱丁堡', 'edinburgh'),
             ('ic', 'imperial college')
         ]
         

@@ -55,10 +55,108 @@ class LocationMapper:
         'london school of economics': ['WC2'],
         '伦敦政治经济学院': ['WC2'],
         
-        'kcl': ['WC2'],
-        "king's college london": ['WC2'],
-        '国王学院': ['WC2'],
-        
+        'kcl': ['WC2', 'SE1'],
+        "king's college london": ['WC2', 'SE1'],
+        '国王学院': ['WC2', 'SE1'],
+
+        # 玛丽女王大学
+        'qmul': ['E1'],
+        'queen mary university of london': ['E1'],
+        'queen mary university': ['E1'],
+        "queen mary's": ['E1'],
+        '玛丽女王大学': ['E1'],
+        '伦敦玛丽女王大学': ['E1'],
+
+        # 伦敦大学城市学院
+        'city university london': ['EC1'],
+        'city university': ['EC1'],
+        'city, university of london': ['EC1'],
+        '伦敦城市大学': ['EC1'],
+
+        # 伦敦大学学院（SOAS）
+        'soas': ['WC1'],
+        'school of oriental and african studies': ['WC1'],
+
+        # 伦敦大学皇家霍洛威
+        'royal holloway': ['TW20'],
+        'rhul': ['TW20'],
+
+        # 伦敦大学玛丽女王（Mile End）
+        'mile end': ['E1', 'E3'],
+
+        # 布鲁内尔大学
+        'brunel university': ['UB8'],
+        'brunel': ['UB8'],
+
+        # 伦敦南岸大学
+        'london south bank university': ['SE1'],
+        'lsbu': ['SE1'],
+        '伦敦南岸大学': ['SE1'],
+
+        # 威斯敏斯特大学
+        'university of westminster': ['W1', 'NW1'],
+        'westminster university': ['W1', 'NW1'],
+        '威斯敏斯特大学': ['W1', 'NW1'],
+
+        # 伦敦大学伯贝克学院
+        'birkbeck': ['WC1'],
+        'birkbeck university': ['WC1'],
+
+        # 卡迪夫大学
+        'cardiff university': ['CF10'],
+        'cardiff': ['CF10'],
+        '卡迪夫大学': ['CF10'],
+        '卡迪夫': ['CF10'],
+
+        # 爱丁堡大学
+        'university of edinburgh': ['EH8', 'EH9'],
+        'edinburgh university': ['EH8', 'EH9'],
+        'edinburgh': ['EH1', 'EH8'],
+        '爱丁堡大学': ['EH8', 'EH9'],
+        '爱丁堡': ['EH1', 'EH8'],
+
+        # 曼彻斯特大学
+        'university of manchester': ['M13', 'M14'],
+        'manchester university': ['M13', 'M14'],
+        'manchester': ['M1', 'M2'],
+        '曼彻斯特大学': ['M13', 'M14'],
+        '曼彻斯特': ['M1', 'M2'],
+
+        # 伯明翰大学
+        'university of birmingham': ['B15'],
+        'birmingham university': ['B15'],
+        'birmingham': ['B1', 'B2'],
+        '伯明翰大学': ['B15'],
+        '伯明翰': ['B1', 'B2'],
+
+        # 利兹大学
+        'university of leeds': ['LS2', 'LS6'],
+        'leeds university': ['LS2', 'LS6'],
+        'leeds': ['LS1', 'LS2'],
+        '利兹大学': ['LS2', 'LS6'],
+        '利兹': ['LS1', 'LS2'],
+
+        # 谢菲尔德大学
+        'university of sheffield': ['S10'],
+        'sheffield university': ['S10'],
+        'sheffield': ['S1', 'S10'],
+        '谢菲尔德大学': ['S10'],
+        '谢菲尔德': ['S1', 'S10'],
+
+        # 诺丁汉大学
+        'university of nottingham': ['NG7'],
+        'nottingham university': ['NG7'],
+        'nottingham': ['NG1', 'NG7'],
+        '诺丁汉大学': ['NG7'],
+        '诺丁汉': ['NG1', 'NG7'],
+
+        # 布里斯托大学
+        'university of bristol': ['BS8'],
+        'bristol university': ['BS8'],
+        'bristol': ['BS1', 'BS8'],
+        '布里斯托大学': ['BS8'],
+        '布里斯托': ['BS1', 'BS8'],
+
         # 牛津大学
         'oxford university': ['OX1', 'OX2'],
         'oxford': ['OX1', 'OX2'],
