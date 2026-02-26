@@ -95,7 +95,7 @@
           disabled="{{contactLoading || (contactStats && contactStats.remaining <= 0)}}">
           {{contactStats && contactStats.remaining <= 0 ? '今日额度已用完' : '联系中介'}}
         </button>
-        <view class="contact-tip">点击后复制 Zoopla 链接，粘贴到浏览器打开即可联系中介/房东</view>
+        <view class="contact-tip">点击后小程序会自动复制房产原链接，请粘贴到浏览器打开即可联系中介/房东</view>
       </view>
       <view wx:else class="contact-login">
         <text class="login-tip">登录后可复制房源链接，在浏览器中打开联系中介</text>

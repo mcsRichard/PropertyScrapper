@@ -14,7 +14,7 @@
     <view class="ai-badge">
       <text class="ai-badge-text">AI Powered</text>
     </view>
-  <view class="user-status">
+  <view class="user-status" wx:if="{{!focusOnResults}}">
     <view wx:if="{{isLoggedIn}}" class="user-info">
       <view class="user-avatar-wrapper">
         <image 
@@ -42,8 +42,8 @@
   </view>
   </view>
   
-  <!-- AI对话搜索栏 - 突出显示 -->
-  <view class="ai-search-section">
+  <!-- AI对话搜索栏 - 有 AI 结果时隐藏以聚焦结果列表 -->
+  <view class="ai-search-section" wx:if="{{!focusOnResults}}">
     <view class="ai-search-header">
       <view class="ai-icon-wrapper">
         <text class="ai-icon">🤖</text>
@@ -66,8 +66,8 @@
       </button>
     </view>
     
-    <!-- AI解析结果提示 -->
-    <view class="ai-filter-tip" wx:if="{{aiFilters && searchKeyword}}">
+    <!-- AI解析结果提示（显示约 2 秒后自动隐藏） -->
+    <view class="ai-filter-tip" wx:if="{{showAiTip && aiFilters && searchKeyword}}">
       <view class="ai-generated-badge">
         <text class="ai-generated-text">🤖 AI生成</text>
       </view>
@@ -213,10 +213,13 @@
     </view>
   </view>
 
-  <!-- AI搜索结果标识栏 -->
+  <!-- AI搜索结果标识栏（专注结果时显示，可点击「重新搜索」恢复顶部与搜索区） -->
   <view class="ai-result-bar" wx:if="{{aiFilters && searchKeyword}}">
     <text class="ai-result-label">🤖 AI生成结果</text>
-    <text class="ai-result-hint">内容由AI辅助生成，请自行核实</text>
+    <view class="ai-result-right">
+      <text class="ai-result-hint">内容由AI辅助生成，请自行核实</text>
+      <text class="ai-result-back-search" bindtap="showSearchSection">重新搜索</text>
+    </view>
   </view>
 
   <!-- 房产列表 -->

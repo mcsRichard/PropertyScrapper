@@ -446,9 +446,22 @@
   font-weight: 700;
 }
 
+.ai-result-right {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
 .ai-result-hint {
   font-size: 20rpx;
   color: #999;
+}
+
+.ai-result-back-search {
+  font-size: 22rpx;
+  color: #012169;
+  font-weight: 600;
+  padding: 6rpx 12rpx;
 }
 
 .tip-label {

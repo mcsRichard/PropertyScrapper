@@ -320,9 +320,9 @@ Page({
       success: () => {
         wx.showModal({
           title: '链接已复制',
-          content: '因平台限制，无法在小程序内打开第三方网页。请点击「确定」后，在微信中粘贴链接到浏览器打开，即可在 Zoopla 页面联系中介。',
+          content: '因平台限制，无法在小程序内打开第三方网页。点击「确定」后，小程序会自动复制房产原链接，请粘贴到浏览器打开即可联系中介/房东。',
           showCancel: false,
-          confirmText: '知道了'
+          confirmText: '确定'
         })
       },
       fail: () => {

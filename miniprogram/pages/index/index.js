@@ -22,6 +22,8 @@ Page({
     searchKeyword: '', // 搜索关键词
     aiFilters: null, // AI解析的筛选条件
     aiFiltersText: '', // AI筛选条件显示文本
+    showAiTip: false, // AI解析提示卡片是否显示（约 2 秒后自动隐藏）
+    focusOnResults: false, // 有 AI 搜索结果时隐藏顶部登录区与 AI 搜索区，聚焦结果列表
     // 筛选选项
     bedroomOptions: [
       { label: '不限', value: '' },
@@ -98,6 +100,13 @@ Page({
 
   onShow() {
     this.syncUserState(true)
+  },
+
+  onUnload() {
+    if (this._aiTipTimer) {
+      clearTimeout(this._aiTipTimer)
+      this._aiTipTimer = null
+    }
   },
 
   onReachBottom() {
@@ -378,8 +387,14 @@ Page({
       hasMore: true,
       searchKeyword: '',
       aiFilters: null,
-      aiFiltersText: ''
+      aiFiltersText: '',
+      showAiTip: false,
+      focusOnResults: false
     })
+    if (this._aiTipTimer) {
+      clearTimeout(this._aiTipTimer)
+      this._aiTipTimer = null
+    }
     this._searchKeyword = ''
     this.loadProperties(true)
   },
@@ -409,6 +424,11 @@ Page({
     })
   },
 
+  /** 在专注结果时点击「重新搜索」，恢复显示顶部登录区与 AI 搜索区 */
+  showSearchSection() {
+    this.setData({ focusOnResults: false })
+  },
+
 
   /**
    * 搜索框输入（同步保存一份，避免真机点击时 setData 未完成导致第一次点击读到空）
@@ -434,12 +454,18 @@ Page({
       return
     }
 
+    if (this._aiTipTimer) {
+      clearTimeout(this._aiTipTimer)
+      this._aiTipTimer = null
+    }
     this.setData({
       properties: [],
       page: 1,
       hasMore: true,
       aiFilters: null,
-      aiFiltersText: ''
+      aiFiltersText: '',
+      showAiTip: false,
+      focusOnResults: false
     })
 
     api.searchProperties(keyword, this.data.page, this.data.limit)
@@ -524,14 +550,24 @@ Page({
           const filters = res.data.filters || {}
           const filtersText = this.formatAIFilters(filters)
 
+          if (this._aiTipTimer) {
+            clearTimeout(this._aiTipTimer)
+            this._aiTipTimer = null
+          }
           this.setData({
             properties: res.data.properties,
             total: res.data.pagination.total,
             hasMore: res.data.pagination.page < res.data.pagination.pages,
             aiFilters: filters,
             aiFiltersText: filtersText,
+            showAiTip: true,
+            focusOnResults: true,
             loading: false
           })
+          this._aiTipTimer = setTimeout(() => {
+            this.setData({ showAiTip: false })
+            this._aiTipTimer = null
+          }, 2000)
 
           // 合并展示：手动有值则保留，否则用 AI。与后端 AND 逻辑一致。
           const manual = this.data.filters
